@@ -1,6 +1,6 @@
 {
   "name": "techno",
-  "version": "0.7.1",
-  "description": "A small techno app above your chat box. Pick a track, build it up part by part, replay the set, share it with a code or an mp3.",
+  "version": "0.8.0",
+  "description": "A long techno set above your chat box: three drops, auto mixing into the next track, favorites, Mac media keys. Claude changes it from chat.",
   "author": { "name": "Ruslan Shchuchkin" }
 }

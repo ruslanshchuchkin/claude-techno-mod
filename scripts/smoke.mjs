@@ -1,76 +1,32 @@
-// Runs the hooks module in node against a fake mods API, to catch logic
-// errors without a Claude Code session. `claude plugin test` is the real test.
-import { register } from '../hooks/register.js'
+// Fast checks in node, without a session: the version matches plugin.json,
+// every part of the plan renders, the handover renders, and a render is fast.
+// `claude plugin test` is the real test of the mod.
+import { readFileSync } from 'node:fs'
+import { trackFor, atPart, renderLoop, PLAN, HANDOVER } from '../hooks/engine.js'
+import { newSet, loopSpec, afterLoop } from '../hooks/conductor.js'
 
-if (!Uint8Array.prototype.toBase64) {
-  Uint8Array.prototype.toBase64 = function () { return Buffer.from(this).toString('base64') }
+const fail = (msg) => { console.error('FAIL', msg); process.exitCode = 1 }
+const plugin = JSON.parse(readFileSync(new URL('../.claude-plugin/plugin.json', import.meta.url), 'utf8')).version
+const mod = readFileSync(new URL('../hooks/register.js', import.meta.url), 'utf8').match(/const VERSION = '([^']+)'/)[1]
+if (plugin !== mod) fail(`VERSION ${mod} in register.js, ${plugin} in plugin.json`)
+
+const t = trackFor('smoke test')
+for (let p = 0; p < PLAN.length; p++) {
+  const t0 = performance.now()
+  const r = renderLoop(atPart(t, p), { rise: !!PLAN[p].rise, impact: PLAN[p].section === 'drop' })
+  const ms = performance.now() - t0
+  let peak = 0
+  for (const x of r.left) peak = Math.max(peak, Math.abs(x))
+  if (!(peak > 0.05 && peak <= 0.9)) fail(`part ${p} peak ${peak}`)
+  if (ms > 1500) fail(`part ${p} took ${ms} ms`)
 }
-
-const hooks = []
-const on = (event, a, b) => hooks.push({ event, matcher: b ? a : null, fn: b ?? a })
-register(on)
-
-const calls = []
-const store = new Map()
-let t = 1000
-const el = (type) => (props) => ({ type, props })
-const $ = {
-  audio: { play: (clip, opt) => { calls.push(['audio.play', clip.base64.length, opt.gain]); return new Promise((res) => opt.signal.addEventListener('abort', res)) } },
-  clock: { now: async () => (t += 137), every: (ms) => { calls.push(['clock.every', ms]); return { cancel() {} } } },
-  command: { register: async (spec) => calls.push(['command.register', spec.name]) },
-  tool: { register: async (spec) => calls.push(['tool.register', spec.name]) },
-  env: { get: async () => '/tmp/claude-501/techno-home' },
-  process: { run: async (argv) => { calls.push(['process.run', argv[0]]); return { exitCode: 0, stdout: '', stderr: '' } } },
-  store: { get: async (k) => store.get(k), set: async (k, v) => store.set(k, v) },
-  ui: {
-    copy: async (text) => calls.push(['ui.copy', text]),
-    invalidate: () => {},
-    open: async (p) => calls.push(['ui.open', p.id]),
-    resolve: () => ({ Box: el('Box'), Text: el('Text'), Button: el('Button'), Input: el('Input') }),
-  },
+const set = newSet(atPart(t, PLAN.length - 1))
+afterLoop(set, { auto: true, nextTrack: () => trackFor('next one') })
+for (let i = 0; i < HANDOVER.length; i++) {
+  const spec = loopSpec(set, { auto: true })
+  const r = renderLoop(spec.track, { with: spec.with })
+  if (!r.left.some((x) => x !== 0)) fail('handover step ' + i + ' is silent')
+  afterLoop(set, { auto: true, nextTrack: () => trackFor('next one') })
+  afterLoop(set, { auto: true, nextTrack: () => trackFor('next one') })
 }
-
-async function fire(event, e, fields = {}) {
-  const hs = hooks.filter((h) => h.event === event && Object.entries(h.matcher ?? {}).every(([k, v]) => e[k] === v || fields[k] === v))
-  let i = 0
-  const next = async (ev) => (i < hs.length ? hs[i++].fn($, ev, next) : { type: 'engine' })
-  return next(e)
-}
-
-// Flattens a tree to lines: a row Box becomes one line
-const line = (node) => (node?.type === 'Text' ? node.props.children.join('') : (node?.props?.children ?? []).map(line).join(node?.props?.flexDirection === 'row' ? ' ' : '\n'))
-const texts = (node) => line(node).split('\n')
-
-await fire('session.start', {})
-console.log('start:', calls.splice(0).map((c) => c.join(' ')).join(' | '))
-
-let r = await fire('command.run', { command: 'techno', args: 'late night deploy in bucharest' })
-console.log('/techno phrase ->', JSON.stringify(r), calls.splice(0).map((c) => c.join(' ')).join(' | '))
-
-let pane = await fire('ui.render', { component: 'Pane', requestId: 'techno', props: {}, surface: 'terminal' })
-console.log(texts(pane).join('\n'))
-
-await fire('prompt.submit', { text: 'make it darker and add some acid' })
-r = await fire('tool.call', { tool: 'mcp__techno__jam', mood: 'dark', layers: { acid: true }, note: 'darker, acid on' })
-console.log('\njam ->', r.result)
-pane = await fire('ui.render', { component: 'Pane', requestId: 'techno', props: {}, surface: 'terminal' })
-console.log(texts(pane).slice(-3).join('\n'))
-
-r = await fire('command.run', { command: 'techno', args: 'code' })
-console.log('\n/techno code ->', r.text)
-r = await fire('command.run', { command: 'techno', args: r.text })
-console.log('/techno <code> -> same track again:', store.get('track').mood === 0 && store.get('track').layers.acid === true)
-
-r = await fire('command.run', { command: 'techno', args: 'save' })
-console.log('/techno save ->', r.text, calls.filter((c) => c[0] === 'process.run').map((c) => c[1]).join(','))
-r = await fire('command.run', { command: 'techno', args: 'stop' })
-console.log('/techno stop ->', r.text)
-
-// the version in the jam answer must match the manifest, or a stale module hides
-{
-  const { readFileSync } = await import('node:fs')
-  const manifest = JSON.parse(readFileSync(new URL('../.claude-plugin/plugin.json', import.meta.url))).version
-  const inCode = readFileSync(new URL('../hooks/register.js', import.meta.url), 'utf8').match(/const VERSION = '([^']+)'/)?.[1]
-  console.log('version matches the manifest:', manifest === inCode, manifest, inCode)
-  if (manifest !== inCode) process.exit(1)
-}
+console.log(process.exitCode ? 'smoke: failed' : `smoke: ok (v${plugin})`)

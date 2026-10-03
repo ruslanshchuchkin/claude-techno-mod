@@ -1,5 +1,6 @@
 import { expect, mock, test } from 'claude-code/testing'
-import { atPart, encodeCode, parseCode, toggleStep, trackFor, PLAN } from '../hooks/engine.js'
+import { atPart, encodeCode, parseCode, toggleStep, trackFor, moodName, withVibe, activeLayers, PLAN, HANDOVER, HANDOVER_LOOPS, HANDOVER_TO } from '../hooks/engine.js'
+import { newSet, loopSpec, afterLoop, stepOn } from '../hooks/conductor.js'
 
 // What Claude Code passes to the band's ui.render hook, apart from the app
 const PANE = {
@@ -10,8 +11,40 @@ const PANE = {
   props: { hasSurvey: false, isWorking: false, maxRows: 30, bodyColumns: 120, scroll: { offset: 0, bodyRows: 30 }, view: {} },
 } as const
 
+// A fake of the background player (player/techno.mjs): the same answers on
+// the socket, with the real conductor, and no sound.
+function fakePlayer() {
+  const p: any = { set: newSet(trackFor('late night deploy')), playing: false, auto: true, favorites: [], history: [], rev: 1, said: '', cmds: [] as any[] }
+  const id = (t: any) => encodeCode({ ...t, part: null })
+  const view = () => {
+    const t = p.set.track
+    const nx = PLAN[t.part + 1]
+    return { code: encodeCode(t), id: id(t), phrase: t.phrase, mood: moodName(t), bpm: t.bpm, part: t.part, section: PLAN[t.part].section, name: PLAN[t.part].name, from: null, next: nx ? { name: nx.name, adds: nx.adds, layer: nx.layer } : { name: 'the next track' }, bar: 0, loopsLeft: 1 }
+  }
+  const state = () => ({ version: '9.9.9', rev: p.rev, now: 0, playing: p.playing, auto: p.auto, playlist: null, view: view(), barStartedAt: 0, barMs: 1800, stepMs: 112, nextInMs: p.playing && p.auto ? 23000 : null, fav: p.favorites.some((f: any) => f.code === id(p.set.track)), favorites: p.favorites, recent: p.history.map((c: string) => ({ code: c, label: parseCode(c)!.phrase, mood: 'dark', bpm: 128 })), said: p.said, canUndo: false })
+  p.command = (c: any) => {
+    p.cmds.push(c)
+    p.rev++
+    const t = p.set.track
+    if (c.op === 'play') p.playing = true
+    if (c.op === 'pause') p.playing = false
+    if (c.op === 'auto') p.auto = c.on
+    if (c.op === 'next') stepOn(p.set, () => trackFor('ship it'))
+    if (c.op === 'pick') { p.history.push(id(t)); p.set = newSet(atPart(parseCode(c.code) ?? trackFor(c.code), 0)); p.playing = true }
+    if (c.op === 'prev' && p.history.length) p.set = newSet(atPart(parseCode(p.history.pop())!, HANDOVER_TO))
+    if (c.op === 'jam' && c.mood) p.set.track = withVibe(t, c.mood)
+    if (c.op === 'layer') p.set.track = { ...t, layers: { ...t.layers, [c.name]: !activeLayers(t)[c.name] } }
+    if (c.op === 'step') p.set.track = toggleStep(t, c.layer, c.i)
+    if (c.op === 'fav') p.favorites = p.favorites.some((f: any) => f.code === id(t)) ? [] : [{ code: id(t), label: t.phrase, mood: moodName(t), bpm: t.bpm }]
+    return state()
+  }
+  p.state = state
+  return p
+}
+
 // Answers every call the mod makes that the kit does not answer itself
 function stubs(on: any, store: Record<string, unknown> = {}, run?: (argv: string) => unknown) {
+  const player = fakePlayer()
   const clock = mock.clock(on)
   mock.store(on, store)
   mock.env(on, { HOME: '/home/test' })
@@ -19,10 +52,11 @@ function stubs(on: any, store: Record<string, unknown> = {}, run?: (argv: string
   on('session.cwd', () => ({ value: '/work/my-app' }))
   on('command.register', () => ({ value: undefined }))
   on('tool.register', () => ({ value: undefined }))
-  on('audio.play', () => ({ value: undefined }))
-  on('ui.open', () => ({ value: { isPlaced: true } }))
   on('ui.copy', () => ({ value: { isCopied: true } }))
-  on('fs.read', () => ({ value: JSON.stringify({ name: 'techno', version: '0.2.0-dev' }) }))
+  on('http.fetch', ($: any, e: any) => {
+    const body = e.init?.body ? JSON.parse(e.init.body) : null
+    return { value: { status: 200, ok: true, headers: {}, text: JSON.stringify(body ? player.command(body) : player.state()) } }
+  })
   on('process.run', ($: any, e: any) => {
     const argv = e.argv.join(' ')
     const own = run?.(argv)
@@ -33,283 +67,177 @@ function stubs(on: any, store: Record<string, unknown> = {}, run?: (argv: string
   })
   on('prompt.submit', ($: any, e: any) => ({ text: e.text }))
   on('ui.render', () => ({ type: 'Text', props: {}, children: ['drawn by Claude Code'] }))
-  return clock
+  return { clock, player }
 }
 
 const start = ($: any) => $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work/my-app' })
 
-test('/techno <phrase> starts the build at the kick, and /techno code prints its share line', async ($, on) => {
-  stubs(on)
+test('a new chat says hello to the player with the project names and the tracks kept before', async ($, on) => {
+  const { player } = stubs(on, { saved: [{ label: 'main', code: 'main@134m3e3d1-bass-hats' }], track: atPart(trackFor('ruslan'), 3) })
   await start($)
-  await $.command.run({ command: 'techno', args: 'late night deploy' })
-  const code = await $.command.run({ command: 'techno', args: 'code' })
-  expect(code.text).toMatch(/^\/techno late-night-deploy@\d{3}m\de\dk\dp0$/)
+  const hello = player.cmds.find((c: any) => c.op === 'hello')
+  expect(hello.repo).toContain('my-app')
+  expect(hello.repo).toContain('feature/login')
+  expect(hello.saved[0].code).toBe('main@134m3e3d1-bass-hats')
+  expect(hello.track).toMatch(/^ruslan@/)
 })
 
-test('the jam tool changes mood and layers, and the share line carries them', async ($, on) => {
-  stubs(on)
+test('the jam tool sends the change to the player and answers with the share line', async ($, on) => {
+  const { player } = stubs(on)
   await start($)
-  await $.command.run({ command: 'techno', args: 'ruslan' })
-  const r = await $.tool.call({ tool: 'mcp__techno__jam', mood: 'dark', layers: { acid: true, hats: false } })
+  const r = await $.tool.call({ tool: 'mcp__techno__jam', mood: 'dark', layers: { acid: true } })
+  expect(player.cmds.some((c: any) => c.op === 'jam' && c.mood === 'dark' && c.layers.acid === true)).toBe(true)
   expect(String(r.result)).toContain('mood dark')
-  expect(String(r.result)).toContain('+acid')
-  expect(String(r.result)).toContain('-hats')
+  expect(String(r.result)).toMatch(/Share line: \/techno late-night-deploy@/)
+  await $.tool.call({ tool: 'mcp__techno__jam', track: 'previous' })
+  expect(player.cmds.some((c: any) => c.op === 'prev')).toBe(true)
+  await $.tool.call({ tool: 'mcp__techno__jam', favorite: true })
+  expect(player.cmds.some((c: any) => c.op === 'fav')).toBe(true)
 })
 
-test('the jam tool moves the build to its next part', async ($, on) => {
-  stubs(on)
+test('/techno <phrase> picks a track, /techno stop pauses, /techno code prints the line', async ($, on) => {
+  const { player } = stubs(on)
   await start($)
-  await $.command.run({ command: 'techno', args: 'ruslan' })
-  const r = await $.tool.call({ tool: 'mcp__techno__jam', next: true })
-  expect(String(r.result)).toContain('part 2 of')
-  expect(String(r.result)).toMatch(/p1/)
+  await $.command.run({ command: 'techno', args: 'late night deploy' })
+  expect(player.cmds.some((c: any) => c.op === 'pick' && c.code === 'late night deploy')).toBe(true)
+  await $.command.run({ command: 'techno', args: 'stop' })
+  expect(player.playing).toBe(false)
+  expect((await $.command.run({ command: 'techno', args: 'code' })).text).toMatch(/^\/techno late-night-deploy@\d{3}m\de\dk\da0$/)
 })
 
-test('a share code plays the same track, old codes included', async ($, on) => {
-  stubs(on)
-  await start($)
-  await $.command.run({ command: 'techno', args: 'ruslan@140m4e4d2s1+stab' })
-  let code = await $.command.run({ command: 'techno', args: 'code' })
-  expect(code.text).toBe('/techno ruslan@140m4e4d2s1+stab')
-  await $.command.run({ command: 'techno', args: 'ruslan@140m4e4p5-kick*kick00040000' })
-  code = await $.command.run({ command: 'techno', args: 'code' })
-  expect(code.text).toBe('/techno ruslan@140m4e4p5-kick*kick00040000')
-})
-
-test('a step toggles on and off again, and the code round-trips', () => {
-  const t = atPart(trackFor('ruslan'), 0)
-  const on = toggleStep(t, 'kick', 2)
-  expect(encodeCode(on)).toContain('*kick0004')
-  expect(encodeCode(parseCode(encodeCode(on))!)).toBe(encodeCode(on))
-  expect(encodeCode(toggleStep(on, 'kick', 2))).toBe(encodeCode(t))
-})
-
-test('the crate lists tracks from the repo, and a click opens the deck', async ($, on) => {
-  stubs(on)
+test('the deck: play, the track and its mood, previous, favorite, auto; mood, next, edit, favorites under the grid', async ($, on) => {
+  const { player } = stubs(on)
   await start($)
   await $.command.run({ command: 'techno', args: '' })
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ ...PANE, surface })
-    expect(await ui.find({ type: 'Text', text: /this project/ })).toBeDefined()
-    const key = 'pick-' + encodeCode(atPart(trackFor('feature/login'), 0))
-    expect(await ui.find({ key })).toBeDefined()
-    await ui.press({ key })
-    expect(await ui.find({ key: 'back' })).toBeDefined()
-    await ui.press({ key: 'back' })
-    await ui.unmount()
-  }
-})
-
-test('the deck is one line, a grid and the moods: no knobs, no layer chips', async ($, on) => {
-  stubs(on)
-  await start($)
-  await $.command.run({ command: 'techno', args: 'late night deploy' })
-  await $.command.run({ command: 'techno', args: 'stop' })
-  for (const surface of ['terminal', 'desktop'] as const) {
-    const ui = await $.ui.mount({ ...PANE, surface })
-    expect(await ui.find({ key: 'grid' })).toBeDefined()
-    expect(await ui.find({ key: 'energy-up' })).toBeUndefined()
-    expect(await ui.find({ key: 'mood-sad' })).toBeDefined()
-    expect(await ui.find({ key: 'layer-kick' })).toBeUndefined()
-    expect(await ui.find({ type: 'Text', text: /^1\/10$/ })).toBeDefined()
+    for (const key of ['play', 'fav', 'auto', 'grid', 'mood-sad', 'mood-mysterious', 'mood-dark', 'edit', 'favorites']) expect(await ui.find({ key })).toBeDefined()
+    // auto is on: the set moves by itself, so there is no next part button
+    expect(await ui.find({ key: 'next' })).toBeUndefined()
+    expect((await ui.find({ key: 'auto' }))?.props.variant).toBe('primary')
+    // the mood that plays is the filled button, the others are not
+    const mood = moodName(player.set.track)
+    expect((await ui.find({ key: 'mood-' + mood }))?.props.variant).toBe('primary')
+    expect((await ui.find({ key: 'mood-' + ['sad', 'mysterious', 'dark'].find((m) => m !== mood) }))?.props.variant).toBeUndefined()
     await ui.unmount()
   }
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  await ui.press({ key: 'mood-sad' })
-  expect(await ui.find({ key: 'key-up' })).toBeUndefined()
-  expect(await ui.find({ key: 'scale-up' })).toBeUndefined()
-  await ui.unmount()
-  const code = await $.command.run({ command: 'techno', args: 'code' })
-  expect(code.text).toMatch(/@122m2e0k0p0/)
-})
-
-test('play is lit first, then NEXT builds the track part by part to the done card', { timeoutMs: 30000 }, async ($, on) => {
-  stubs(on)
-  await start($)
-  await $.command.run({ command: 'techno', args: 'late night deploy' })
-  await $.command.run({ command: 'techno', args: 'stop' })
-  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  expect((await ui.find({ key: 'play' }))?.props.variant).toBe('primary')
-  await ui.press({ key: 'play' })
-  expect((await ui.find({ key: 'do-move' }))?.props.variant).toBe('primary')
-  expect((await ui.find({ key: 'do-move' }))?.props.label).toContain('add deep bass ›')
-  for (let i = 0; i < PLAN.length; i++) await ui.press({ key: 'do-move' })
-  expect(await ui.find({ type: 'Text', text: /Your track is done/ })).toBeDefined()
-  expect(await ui.find({ key: 'replay' })).toBeDefined()
-  expect(await ui.find({ key: 'save-set' })).toBeDefined()
-  await ui.press({ key: 'remix' })
-  expect(await ui.find({ type: 'Text', text: /Your track is done/ })).toBeUndefined()
-  expect(await ui.find({ type: 'Text', text: /^1\/10$/ })).toBeDefined()
+  await ui.press({ key: 'auto' })
+  expect(player.auto).toBe(false)
+  await ui.press({ key: 'next' })
+  expect(player.set.track.part).toBe(1)
+  await ui.press({ key: 'edit' })
+  expect(await ui.find({ key: 'dice' })).toBeDefined()
+  expect(await ui.find({ key: 'melody' })).toBeDefined()
+  await ui.press({ key: 'fav' })
+  expect((await ui.find({ key: 'fav' }))?.props.label).toBe('♥')
   await ui.unmount()
 })
 
-test('share saves an mp3, shows it in Finder, and copies the play line', async ($, on) => {
-  const calls: string[] = []
-  stubs(on, {}, (argv) => { calls.push(argv); return undefined })
+test('the favorites screen plays a favorite and lists the tracks heard before', async ($, on) => {
+  const { player } = stubs(on)
   await start($)
-  await $.command.run({ command: 'techno', args: 'ruslan' })
-  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  await ui.press({ key: 'share' })
-  expect(calls.some((c) => c.startsWith('ffmpeg') && c.includes('.mp3'))).toBe(true)
-  expect(calls.some((c) => c.startsWith('open -R'))).toBe(true)
-  expect(await ui.find({ type: 'Text', text: /shown in Finder · play line copied/ })).toBeDefined()
-  await ui.unmount()
-})
-
-test('/techno hides the app, and a playing track shows a one-line player', async ($, on) => {
-  stubs(on)
-  await start($)
-  await $.command.run({ command: 'techno', args: 'ruslan' })
   await $.command.run({ command: 'techno', args: '' })
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  expect(await ui.find({ key: 'mini-play' })).toBeDefined()
-  expect(await ui.find({ key: 'mini-auto' })).toBeDefined()
-  expect(await ui.find({ key: 'mini-next' })).toBeDefined()
-  expect(await ui.find({ key: 'mini-share' })).toBeDefined()
-  expect(await ui.find({ key: 'mood-sad' })).toBeUndefined()
-  await ui.press({ key: 'mini-open' })
-  expect(await ui.find({ key: 'mood-sad' })).toBeDefined()
+  await ui.press({ key: 'fav' })
+  await $.command.run({ command: 'techno', args: 'ship it' })
+  await ui.press({ key: 'favorites' })
+  expect(await ui.find({ key: 'play-all' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /heard before/ })).toBeUndefined()
+  const fav = player.favorites[0].code
+  await ui.press({ key: 'f-play-' + fav })
+  expect(player.cmds.at(-1)).toMatchObject({ op: 'pick', code: fav, playlist: 'favorites' })
   await ui.unmount()
 })
 
-test('a click on a grid cell adds a hit, and a click on a row name mutes the layer', { timeoutMs: 30000 }, async ($, on) => {
-  stubs(on)
+test('a click on a grid cell edits a step, and a click on a row name toggles the layer', async ($, on) => {
+  const { player } = stubs(on)
   await start($)
   await $.command.run({ command: 'techno', args: 'ruslan' })
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ ...PANE, surface })
     // row 0 (kick) sits under the header and the beat ruler; step 2 starts at column 8 + 2 * 3
     await ui.pointer({ type: 'down', x: 14, y: 2, button: 'left', in: 'grid' })
-    expect((await $.command.run({ command: 'techno', args: 'code' })).text).toContain('*kick0004')
-    await ui.pointer({ type: 'down', x: 14, y: 2, button: 'left', in: 'grid' })
+    expect(player.cmds.at(-1)).toMatchObject({ op: 'step', layer: 'kick', i: 2 })
     await ui.pointer({ type: 'down', x: 1, y: 2, button: 'left', in: 'grid' })
-    expect((await $.command.run({ command: 'techno', args: 'code' })).text).toContain('-kick')
-    await ui.pointer({ type: 'down', x: 1, y: 2, button: 'left', in: 'grid' })
+    expect(player.cmds.at(-1)).toMatchObject({ op: 'layer', name: 'kick' })
     await ui.unmount()
   }
 })
 
-test('auto builds a part per loop, then mixes into the next track at the same tempo', { timeoutMs: 60000 }, async ($, on) => {
-  const clock = stubs(on)
-  await start($)
-  await $.command.run({ command: 'techno', args: 'late night deploy' })
-  const bpm = (await $.command.run({ command: 'techno', args: 'code' })).text.match(/@(\d+)/)[1]
-  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  await ui.press({ key: 'auto' })
-  const loopMs = (128 * 60000) / Number(bpm) / 4
-  await clock.advance(loopMs + 50)
-  expect((await $.command.run({ command: 'techno', args: 'code' })).text).toMatch(/p1$/)
-  // 10 parts, the two groove parts, the peak and the drop twice: 14 loops in all, then the next track
-  for (let i = 0; i < 13; i++) await clock.advance(loopMs)
-  const code = (await $.command.run({ command: 'techno', args: 'code' })).text
-  expect(code).not.toContain('late-night-deploy')
-  expect(code).toContain('@' + bpm + 'm')
-  expect(code).toMatch(/p0$/)
-  await ui.unmount()
-})
-
-test('the bar closes with × and /techno brings the app back', async ($, on) => {
-  stubs(on)
+test('hidden, the app is a one-line bar with play, previous, favorite, auto and next track', async ($, on) => {
+  const { player } = stubs(on)
   await start($)
   await $.command.run({ command: 'techno', args: 'ruslan' })
+  await $.command.run({ command: 'techno', args: 'ship it' })
   await $.command.run({ command: 'techno', args: '' })
-  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  await ui.press({ key: 'mini-play' })
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  for (const key of ['mini-play', 'mini-prev', 'mini-fav', 'mini-auto', 'mini-next']) expect(await ui.find({ key })).toBeDefined()
+  await ui.press({ key: 'mini-prev' })
+  expect(player.set.track.phrase).toBe('ruslan')
   await ui.press({ key: 'mini-close' })
   expect(await ui.find({ key: 'mini-play' })).toBeUndefined()
-  await $.command.run({ command: 'techno', args: '' })
-  expect(await ui.find({ key: 'mood-sad' })).toBeDefined()
   await ui.unmount()
-})
-
-test('three moods, and each one sets the scale with it', async ($, on) => {
-  stubs(on)
-  await start($)
-  await $.command.run({ command: 'techno', args: 'ruslan' })
-  const r = await $.tool.call({ tool: 'mcp__techno__jam', mood: 'mysterious' })
-  expect(String(r.result)).toContain('hijaz')
-  expect(String(r.result)).toContain('mood mysterious')
-  expect(String(r.result)).toMatch(/m1e\dk3p0/)
-  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  await ui.press({ key: 'mood-dark' })
-  expect((await ui.find({ key: 'mood-dark' }))?.props.dimColor).toBe(false)
-  expect((await ui.find({ key: 'mood-sad' }))?.props.dimColor).toBe(true)
-  await ui.unmount()
-  expect((await $.command.run({ command: 'techno', args: 'code' })).text).toMatch(/m0e\dk2p0/)
-  // an old code keeps its own mood and scale
-  expect(encodeCode(parseCode('ruslan@130m3e2p4')!)).toBe('ruslan@130m3e2p4')
 })
 
 test('the bar follows you into a new chat once you used techno', async ($, on) => {
-  stubs(on, { track: atPart(trackFor('ruslan'), 3), bar: true })
+  stubs(on, { bar: true })
   await start($)
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   expect(await ui.find({ key: 'mini-play' })).toBeDefined()
   await ui.unmount()
 })
 
-test('the top line says the kind of track, the progress and what comes next', async ($, on) => {
-  stubs(on)
-  await start($)
-  await $.command.run({ command: 'techno', args: 'late night deploy' })
-  for (const surface of ['terminal', 'desktop'] as const) {
-    const ui = await $.ui.mount({ ...PANE, surface })
-    await ui.drawn()
-    expect(await ui.find({ type: 'Text', text: /^· (sad|mysterious|dark) · \d+ bpm$/ })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: /^deep bass next$/ })).toBeDefined()
-    expect((await ui.find({ key: 'do-move' }))?.props.label).toMatch(/^(▸ )?add deep bass ›$/)
-    expect((await ui.find({ key: 'dice' }))?.props.label).toBe('new rhythm')
-    await ui.unmount()
+test('the set: three drops, a riser before each, a crash on each, about seven minutes', () => {
+  const set = newSet(trackFor('ship it'))
+  const parts: string[] = []
+  let loops = 0, rises = 0, crashes = 0
+  while (!set.handover) {
+    const spec = loopSpec(set, { auto: true })
+    if (spec.rise) rises++
+    if (spec.impact) crashes++
+    parts.push(PLAN[set.track.part].name)
+    afterLoop(set, { auto: true, nextTrack: () => trackFor('warehouse 4am') })
+    loops++
   }
+  expect(parts.filter((p) => p.startsWith('drop')).length).toBe(12)
+  expect(rises).toBe(3)
+  expect(crashes).toBe(3)
+  expect(PLAN.some((p) => p.layers.includes('stab'))).toBe(false)
+  // about 15 s a loop at 127 bpm
+  expect(loops).toBeGreaterThanOrEqual(25)
 })
 
-test('with auto on, the top line counts down to the next part', async ($, on) => {
-  stubs(on)
-  await start($)
-  await $.command.run({ command: 'techno', args: 'late night deploy' })
-  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  await ui.press({ key: 'auto' })
-  expect(await ui.find({ type: 'Text', text: /^deep bass in$/ })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: /^0:\d\d$/ })).toBeDefined()
-  expect((await ui.find({ key: 'do-move' }))?.props.label).toMatch(/skip to deep bass ›$/)
-  await ui.unmount()
+test('the handover takes the old track out layer by layer, and the new one goes on from its build', () => {
+  const set = newSet(atPart(trackFor('ship it'), PLAN.length - 1))
+  const bpm = set.track.bpm
+  afterLoop(set, { auto: true, nextTrack: () => trackFor('warehouse 4am') })
+  expect(set.handover.from.phrase).toBe('ship it')
+  expect(set.track.phrase).toBe('warehouse 4am')
+  expect(set.track.bpm).toBe(bpm)
+  let before = 99
+  for (let i = 0; i < HANDOVER.length * HANDOVER_LOOPS; i++) {
+    const spec = loopSpec(set, { auto: true })
+    if (set.handover.loop === 0) {
+      const old = Object.values(activeLayers(spec.track)).filter(Boolean).length
+      expect(old).toBeLessThan(before)
+      before = old
+    }
+    afterLoop(set, { auto: true, nextTrack: () => trackFor('null pointer') })
+  }
+  expect(set.handover).toBe(null)
+  expect(set.track.part).toBe(HANDOVER_TO)
 })
 
-test('the voice says the track name in the peak, with the clips from say', async ($, on) => {
-  const calls: string[] = []
-  stubs(on, {}, (argv) => { calls.push(argv); return undefined })
-  await start($)
-  await $.command.run({ command: 'techno', args: 'ruslan@127m1e3k3p6' })
-  expect(calls.some((c) => c.includes('say -v') && c.includes('Whisper') && c.endsWith('ruslan'))).toBe(true)
-  expect(calls.some((c) => c.includes('Daniel'))).toBe(false)
-})
-
-test('with ffplay, one background player plays for every chat, and stop kills its group', async ($, on) => {
-  const calls: string[] = []
-  const clock = stubs(on, {}, (argv) => {
-    calls.push(argv)
-    if (argv.includes('command -v ffplay')) return { exitCode: 0, stdout: '/opt/homebrew/bin/ffplay\n/usr/bin/perl\n', stderr: '' }
-    if (argv.includes('POSIX::setsid')) return { exitCode: 0, stdout: '4242\n', stderr: '' }
-    return undefined
-  })
-  await start($)
-  await $.command.run({ command: 'techno', args: 'ruslan' })
-  expect(calls.some((c) => c.includes('POSIX::setsid') && c.includes('player.sh') && c.includes('loop'))).toBe(true)
-  expect(calls.some((c) => c.startsWith('audio'))).toBe(false)
-  await $.command.run({ command: 'techno', args: 'stop' })
-  await clock.advance(10)
-  expect(calls.some((c) => c.includes('kill -TERM') && c.includes('4242'))).toBe(true)
-})
-
-test('a mood sets the tempo and the energy too', async ($, on) => {
-  stubs(on)
-  await start($)
-  await $.command.run({ command: 'techno', args: 'ruslan' })
-  const sad = String((await $.tool.call({ tool: 'mcp__techno__jam', mood: 'sad' })).result)
-  expect(sad).toContain('122 bpm')
-  expect(sad).toContain('energy minimal')
-  const dark = String((await $.tool.call({ tool: 'mcp__techno__jam', mood: 'dark' })).result)
-  expect(dark).toContain('132 bpm')
-  expect(dark).toContain('energy rolling')
-  expect(dark).toMatch(/techno v\d+\.\d+\.\d+/)
+test('share codes: a<n> is the part, an old p<n> lands in the same section', () => {
+  const t = atPart(trackFor('ruslan'), 7)
+  expect(encodeCode(t)).toMatch(/a7$/)
+  expect(encodeCode(parseCode(encodeCode(t))!)).toBe(encodeCode(t))
+  // old p8 was the drop, old p6 the peak, old p9 the outro
+  expect(PLAN[parseCode('ruslan@130m1e2p8')!.part!].section).toBe('drop')
+  expect(PLAN[parseCode('ruslan@130m1e2p6')!.part!].section).toBe('drop')
+  expect(PLAN[parseCode('ruslan@130m1e2p9')!.part!].section).toBe('outro')
+  const on = toggleStep(atPart(trackFor('ruslan'), 0), 'kick', 2)
+  expect(encodeCode(on)).toContain('*kick0004')
+  expect(encodeCode(toggleStep(on, 'kick', 2))).toBe(encodeCode(atPart(trackFor('ruslan'), 0)))
 })

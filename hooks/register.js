@@ -1,668 +1,145 @@
-// techno: a small techno app inside Claude Code. Pick a track (or grow one
-// from a phrase), press NEXT to build it up one part at a time, and when it
-// is done replay the whole set, save it as an mp3, remix it or share it.
-// Claude can also change the track from chat through the mcp__techno__jam tool.
+// techno: a long techno set that plays while you work with Claude. One
+// background player (player/techno.mjs) makes the music for every chat; this
+// module is a remote control for it: the band above the chat box, the
+// /techno command, and the mcp__techno__jam tool Claude uses to change the
+// music. The Mac's play, next and previous keys work too (the player's
+// TechnoPlayer.app is in Control Center as "Now Playing").
 //
-// /techno              open the app
+// /techno              show or hide the app
 // /techno <phrase>     a new track from the phrase (or from a share code)
 // /techno stop | save | code
-import { normalizePhrase, trackFor, atPart, cleanTrack, parseCode, encodeCode, describe, keyName, decodeWav, moodName, vibeOf, withVibe, VIBES, render, renderSet, toWav, grid, toggleStep, activeLayers, LAYERS, GRID_LAYERS, PLAN, ENERGIES, BPM_MIN, BPM_MAX } from './engine.js'
-import { nextMove } from './coach.js'
+import { parseCode, encodeCode, describe, render, toWav, grid, activeLayers, cleanTrack, LAYERS, GRID_LAYERS, PLAN, VIBES, BPM_MIN, BPM_MAX } from './engine.js'
 import { appView, miniView } from './views.js'
 
 const TOOL = 'mcp__techno__jam'
-// The plugin version, in the jam tool's answer and the player log, so a stale
-// module in an old chat shows itself. Keep it equal to plugin.json (a test checks).
-const VERSION = '0.7.1'
-const GAIN = 0.7
+// The plugin version: in the jam tool's answer, and the player of an older
+// version is replaced by this one. Keep it equal to plugin.json (a test checks).
+const VERSION = '0.8.0'
 // [accent, normal] fill of a hit in the step grid
 const LAYER_COLORS = {
-  kick: ['#ff6b6b', '#d64545'],
-  hats: ['#7fe3ff', '#3fb6d9'],
-  bass: ['#ffd166', '#e0a92e'],
-  perc: ['#8fa8ff', '#5b77e0'],
-  clap: ['#ff8fd8', '#d65bb0'],
-  acid: ['#a6ff6b', '#6fd13a'],
-  stab: ['#d0a6ff', '#a274e0'],
+  kick: ['#e85a5a', '#c94040'],
+  hats: ['#3fb6d9', '#2a93b5'],
+  bass: ['#e8b03a', '#c99320'],
+  perc: ['#7b93f0', '#5b77e0'],
+  clap: ['#e070c0', '#c0509f'],
+  ride: ['#4cc4a0', '#2fa583'],
+  acid: ['#8fdc50', '#6fbf30'],
+  stab: ['#b88ae8', '#9a6ad0'],
 }
-// What each sound is called in the pane, in the order it is listed
-const LAYER_WORDS = { kick: 'kick', bass: 'deep bass', hats: 'hats', rumble: 'rumble', perc: 'percussion', clap: 'clap', stab: 'dub chord', acid: 'acid riff', voice: 'voice' }
-const hearing = (on) => {
-  const names = Object.keys(LAYER_WORDS).filter((n) => on[n]).map((n) => LAYER_WORDS[n])
-  if (!names.length) return 'silence'
-  return names.length === 1 ? names[0] : names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1]
-}
-
-// Where a track's name comes from, so "late night deploy" is not a mystery:
-// every track grows from a name, and the crate offers names from your project.
-function sourceOf(t) {
-  const is = (it) => normalizeLabel(it.label) === t.phrase
-  const repo = s.repo.find(is)
-  if (repo) return { project: 'named after this project', branch: 'named after your branch', commit: 'named after a commit' }[repo.sub] ?? 'from this project'
-  if (s.saved.some(is)) return 'a track you saved'
-  if (STARTERS.some((p) => normalizeLabel(p) === t.phrase)) return 'a starter track'
-  return 'grown from your words'
-}
-
 const STARTERS = ['late night deploy', 'coffee at 3am', 'merge conflict', 'friday deploy', 'null pointer', 'ship it', 'warehouse 4am', 'rooftop sunrise']
 
-// Module state. The track and your kept tracks live in $.store too.
+// Module state. The player holds the music state; this is the chat's view of it.
 const s = {
-  track: null,
-  history: [],
-  playing: false,
-  replaying: false,
-  ctrl: null,
-  startedAt: 0,
-  loopMs: 0,
-  stepMs: 0,
+  home: '',
+  sock: '',
+  ps: null, // the player's last answer to GET /state
+  down: '', // why the player is not there, for the pane
+  starting: null,
   isOpen: false,
-  screen: 'crate',
-  showShare: false,
-  saved: [],
-  repo: [],
-  repoName: '',
-  // the build: the state you left each part in, the layers heard so far, and whether it is done
-  set: new Map(),
-  seen: new Set(),
-  finished: false,
-  // auto: NEXT presses itself at the end of each loop, then moves to the next track
-  auto: false,
-  autoTimer: null,
-  autoLoops: 0,
-  // the bar above the chat box while the app is hidden: shown once you used techno, until its ×
+  screen: 'deck', // deck | favorites | crate
+  editOpen: false,
   used: false,
   barClosed: false,
-  barStored: false,
-  // the track's name in the macOS voices, for the phrase it was recorded for
-  voices: { phrase: '', clips: null },
-  // the background player (see PLAYER_SH): its cache dir when ffplay is there, its pid
-  dir: '',
-  pid: 0,
-  playerSeq: 0,
-  syncTimer: null,
+  repo: [],
   lastPrompt: '',
   you: '',
-  said: '',
   status: '',
+  pollTimer: null,
   grids: new Map(),
 }
 
-const shareLine = (t) => '/techno ' + encodeCode(t)
-const startOf = (phrase) => atPart(trackFor(phrase), 0)
-const item = (label, sub, track = startOf(label)) => ({ label, sub, code: encodeCode(track) })
-const isBuilding = (t) => t && t.part !== null && t.part !== undefined
-// How many loops auto plays a part for: the groove, the peak and the drop get two.
-const AUTO_LOOPS = { groove: 2, peak: 2, drop: 2 }
-const loopsFor = (t) => (isBuilding(t) ? AUTO_LOOPS[PLAN[t.part].section] ?? 1 : 2)
-
-function gridFor(t) {
-  const key = encodeCode(t)
-  if (!s.grids.has(key)) {
-    if (s.grids.size > 64) s.grids.clear()
-    s.grids.set(key, grid(t, 0))
-  }
-  return s.grids.get(key)
-}
-
-// What changed between two tracks, in a few words: "mood 2→1, acid on"
-function diffWords(a, b) {
-  if (!a) return 'new track'
-  if (a.phrase !== b.phrase) return 'new track: ' + b.phrase
-  const out = []
-  if (a.part !== b.part && isBuilding(b)) out.push(PLAN[b.part].section + ': part ' + (b.part + 1))
-  if (a.bpm !== b.bpm) out.push(`${a.bpm}→${b.bpm} bpm`)
-  if (moodName(a) !== moodName(b)) out.push(`${moodName(a)}→${moodName(b)}`)
-  if (a.energy !== b.energy) out.push(`${ENERGIES[a.energy]}→${ENERGIES[b.energy]}`)
-  if (a.dice !== b.dice) out.push('new patterns')
-  if (a.swing !== b.swing) out.push('swing ' + b.swing)
-  if (a.transpose !== b.transpose) out.push('key ' + keyName(b))
-  if (JSON.stringify(a.steps) !== JSON.stringify(b.steps)) out.push('steps edited')
-  const on1 = activeLayers(a), on2 = activeLayers(b)
-  for (const name of LAYERS) if (on1[name] !== on2[name]) out.push(name + (on2[name] ? ' in' : ' out'))
-  return out.join(', ') || 'no change'
-}
-
-const setLength = () => {
-  const n = s.set.size
-  const loop = s.track ? (128 * 60) / s.track.bpm / 4 : 0
-  const secs = Math.round(Math.max(0, n - 1) * loop / 2 + loop)
-  return Math.floor(secs / 60) + ':' + String(secs % 60).padStart(2, '0')
+const shareLine = (code) => '/techno ' + code
+const versionAtLeast = (a, b) => {
+  const x = String(a).split('.').map(Number), y = String(b).split('.').map(Number)
+  for (let i = 0; i < 3; i++) if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) > (y[i] ?? 0)
+  return true
 }
 
 // ---------- the player ----------
-// With ffplay on the machine, one background player serves every chat. It
-// outlives the chat that started it (perl setsid puts it in its own process
-// group), and its watcher stops it once no Claude Code process is left: no
-// desktop chat (.../MacOS/claude) and no terminal CLI (.../share/claude/versions/).
-// Its pid and clock live in $.store ('player'), and every chat syncs from
-// there every 2 s, so every bar shows and controls the same music.
-// Without ffplay, each chat plays its own loop through $.audio.play.
-const PLAYER_SH = [
-  'f="$1"; vol="$2"; mode="$3"; log="$(dirname "$0")/player.log"',
-  'echo "$(date +%T) start $$ $mode $(basename "$f")" >> "$log"',
-  'if [ "$mode" = loop ]; then set -- -loop 0; else set -- -autoexit; fi',
-  'ffplay -nodisp -loglevel error -volume "$vol" "$@" "$f" </dev/null >/dev/null 2>>"$log" &',
-  'p=$!',
-  'while kill -0 $p 2>/dev/null; do',
-  "  if ! pgrep -f '/MacOS/claude|/share/claude/versions/' >/dev/null; then kill $p; echo \"$(date +%T) end $$: no Claude Code left\" >> \"$log\"; exit 0; fi",
-  '  sleep 2',
-  'done',
-  'wait $p; echo "$(date +%T) end $$: ffplay exited $?" >> "$log"',
-  '',
-].join('\n')
 
-// One line in the player log, so a stop can be traced to its cause.
-async function plog($, line) {
-  if (!s.dir) return
-  await $.process.run(['sh', '-c', 'echo "$(date +%T) mod: $2" >> "$1/player.log"', 'sh', s.dir, `${VERSION} ${line}`], { timeoutMs: 5000 }).catch(() => {})
-}
-// ffplay needs a moment to start; the new loop starts this far ahead to land on the beat
-const PLAYER_LATENCY_MS = 150
-
-async function playerInit($) {
-  try {
-    const home = await $.env.get('HOME')
-    const found = await $.process.run(['sh', '-c', 'command -v ffplay && command -v perl'], { timeoutMs: 5000 })
-    if (!home || found.exitCode !== 0 || !found.stdout.includes('ffplay')) return
-    const dir = home + '/Library/Caches/techno'
-    const w = await $.process.run(['sh', '-c', 'mkdir -p "$1" && cat > "$1/player.sh"', 'sh', dir], { stdin: PLAYER_SH, timeoutMs: 5000 })
-    if (w.exitCode !== 0) return
-    s.dir = dir
-    // a player left from before (Claude quit while it played) is gone or orphaned
-    const p = await $.store.get('player')
-    if (p?.pid) {
-      const alive = await $.process.run(['kill', '-0', String(p.pid)], { timeoutMs: 5000 })
-      if (alive.exitCode !== 0) { await plog($, `init: player ${p.pid} is gone, cleared`); await $.store.set('player', null) }
-    }
-    await syncPlayer($)
-  } catch {
-    s.dir = ''
-  }
+async function ask($, body) {
+  const r = await $.http.fetch('http://techno' + (body ? '/cmd' : '/state'), body ? { method: 'POST', body: JSON.stringify(body), socketPath: s.sock } : { socketPath: s.sock })
+  if (!r.ok) throw new Error('player answered ' + r.status)
+  return JSON.parse(r.text)
 }
 
-async function playerStart($, wav, mode) {
-  s.playerSeq = (s.playerSeq + 1) % 4
-  const file = `${s.dir}/${mode}-${s.playerSeq}.wav`
-  const dec = await $.process.run(['sh', '-c', 'base64 --decode > "$1"', 'sh', file], { stdin: wav.toBase64(), timeoutMs: 30000 })
-  if (dec.exitCode !== 0) throw new Error(dec.stderr.trim() || 'could not write the loop')
-  const run = await $.process.run(
-    ['sh', '-c', 'perl -MPOSIX -e "POSIX::setsid(); exec @ARGV" sh "$1/player.sh" "$2" "$3" "$4" </dev/null >/dev/null 2>&1 & echo $!', 'sh', s.dir, file, String(Math.round(GAIN * 100)), mode],
-    { timeoutMs: 5000 },
-  )
-  const pid = parseInt(run.stdout, 10)
-  if (!pid) throw new Error('the player did not start')
-  return pid
-}
-
-// Kills each player's process group: the watcher and its ffplay.
-async function playerKill($, pids, why) {
-  const list = [...new Set(pids.filter(Boolean).map(String))]
-  if (!list.length) return
-  await plog($, `kill ${list.join(' ')}: ${why}`)
-  await $.process.run(['sh', '-c', 'for p in "$@"; do kill -TERM -- -"$p" 2>/dev/null; kill "$p" 2>/dev/null; done; true', 'sh', ...list], { timeoutMs: 5000 })
-}
-
-// Another chat may have started, changed or stopped the music: follow it.
-async function syncPlayer($) {
-  if (!s.dir) return
-  const p = await $.store.get('player')
-  const now = await $.clock.now()
-  if (p?.once && now > p.endsAt) {
-    if (p.pid === s.pid) { s.pid = 0; s.playing = false; s.replaying = false; await $.store.set('player', null); $.ui.invalidate('ui.render') }
-    return
-  }
-  const pid = p?.pid ?? 0
-  if (pid === s.pid) return
-  s.pid = pid
-  if (!pid) {
-    s.playing = false
-    s.replaying = false
-    cancelAuto()
-  } else {
-    s.playing = true
-    s.replaying = !!p.once
-    s.startedAt = p.startedAt
-    s.loopMs = p.loopMs
-    s.stepMs = p.stepMs
-    const t = p.code ? parseCode(p.code) : null
-    if (t && (!s.track || encodeCode(s.track) !== p.code)) { s.track = t; noteLayers(t); markUsed($) }
-  }
-  $.ui.invalidate('ui.render')
-}
-
-// ---------- the voice ----------
-// Free macOS voices say the track's name: Whisper over the peak and the
-// breakdown, Daniel (deep) on the drop. Recorded once per name with `say`,
-// read back as base64, decoded by the engine. No say (not macOS): no voice.
-const VOICES = [['whisper', 'Whisper', 150], ['deep', 'Daniel', 120]]
-const RECORD_SH = 'f="${TMPDIR:-/tmp}/techno-voice-$$.wav"; say -v "$1" -r "$2" -o "$f" --file-format=WAVE --data-format=LEI16@22050 -- "$3" && base64 -i "$f"; rc=$?; rm -f "$f"; exit $rc'
-
-const fromBase64 = (text) => (typeof Uint8Array.fromBase64 === 'function' ? Uint8Array.fromBase64(text) : Uint8Array.from(atob(text), (c) => c.charCodeAt(0)))
-const voicesFor = (phrase) => (s.voices.phrase === phrase ? s.voices.clips : null)
-
-async function loadVoices($, phrase) {
-  if (s.voices.phrase === phrase) return
-  s.voices = { phrase, clips: null }
-  try {
-    const clips = {}
-    for (const [name, voice, rate] of VOICES) {
-      const r = await $.process.run(['sh', '-c', RECORD_SH, 'sh', voice, String(rate), phrase], { timeoutMs: 15000 })
-      const text = r.stdout.replace(/\s+/g, '')
-      if (r.exitCode !== 0 || !text) return
-      clips[name] = decodeWav(fromBase64(text))
-      if (!clips[name]) return
-    }
-    if (s.voices.phrase === phrase) s.voices.clips = clips
-  } catch { /* no voice: the track plays without it */ }
-}
-
-// ---------- audio ----------
-
-async function startAudio($) {
-  await loadVoices($, s.track.phrase)
-  const audio = render(s.track, { voices: voicesFor(s.track.phrase) })
-  const loopMs = audio.seconds * 1000
-  const now = await $.clock.now()
-  // keep the beat: start the new loop at the same point in the bar
-  let offsetMs = 0
-  if (s.playing && !s.replaying && s.loopMs > 0) offsetMs = (((now - s.startedAt) % s.loopMs) / s.loopMs) * loopMs
-  if (s.dir) return startPlayer($, audio, now, offsetMs)
-  const wav = toWav(audio, offsetMs / 1000)
-  const old = s.ctrl
-  const ctrl = new AbortController()
-  s.ctrl = ctrl
-  s.playing = true
-  s.replaying = false
-  s.loopMs = loopMs
-  s.stepMs = audio.stepSeconds * 1000
-  s.startedAt = now - offsetMs
-  $.audio
-    .play({ base64: wav.toBase64(), mime: 'audio/wav' }, { shouldLoop: true, signal: ctrl.signal, gain: GAIN })
-    .catch((err) => {
-      if (s.ctrl !== ctrl) return
-      s.playing = false
-      s.status = 'audio failed: ' + String(err?.message ?? err)
-      $.ui.invalidate('ui.render')
-    })
-  if (old) old.abort()
-  await scheduleAuto($)
-  $.ui.invalidate('ui.render')
-}
-
-async function startPlayer($, audio, now, offsetMs) {
-  const loopMs = audio.seconds * 1000
-  const lead = s.playing && !s.replaying ? PLAYER_LATENCY_MS : 0
-  const wav = toWav(audio, ((offsetMs + lead) % loopMs) / 1000)
-  const before = await $.store.get('player')
-  let pid
-  try {
-    pid = await playerStart($, wav, 'loop')
-  } catch (err) {
-    s.status = 'audio failed: ' + String(err?.message ?? err)
-    $.ui.invalidate('ui.render')
-    return
-  }
-  // the new loop starts first, then the old one stops: no gap on the beat
-  await playerKill($, [s.pid, before?.pid].filter((x) => x && x !== pid), 'a new loop replaced it')
-  s.pid = pid
-  s.playing = true
-  s.replaying = false
-  s.loopMs = loopMs
-  s.stepMs = audio.stepSeconds * 1000
-  s.startedAt = now - offsetMs
-  await $.store.set('player', { pid, startedAt: s.startedAt, loopMs, stepMs: s.stepMs, code: encodeCode(s.track) })
-  await scheduleAuto($)
-  $.ui.invalidate('ui.render')
-}
-
-function stopAudio($, why = 'stop') {
-  if (s.ctrl) s.ctrl.abort()
-  s.ctrl = null
-  s.playing = false
-  s.replaying = false
-  cancelAuto()
-  if (s.dir) {
-    const pid = s.pid
-    s.pid = 0
-    void (async () => {
-      const p = await $.store.get('player')
-      await $.store.set('player', null)
-      await playerKill($, [pid, p?.pid], why)
-    })().catch(() => {})
-  }
-  $.ui.invalidate('ui.render')
-}
-
-// ---------- auto ----------
-
-function cancelAuto() {
-  if (s.autoTimer) s.autoTimer.cancel()
-  s.autoTimer = null
-}
-
-// Wakes at the next loop boundary, so every change lands on the one.
-async function scheduleAuto($) {
-  cancelAuto()
-  if (!s.auto || !s.playing || s.replaying || !s.loopMs) return
-  const now = await $.clock.now()
-  const pos = (((now - s.startedAt) % s.loopMs) + s.loopMs) % s.loopMs
-  let wait = s.loopMs - pos
-  if (wait < 250) wait += s.loopMs
-  s.autoTimer = $.clock.after(wait, () => { autoTick($).catch(() => {}) })
-}
-
-async function autoTick($) {
-  s.autoTimer = null
-  if (!s.auto || !s.playing || s.replaying || !s.track) return
-  s.autoLoops++
-  if (s.autoLoops < loopsFor(s.track)) return scheduleAuto($)
-  s.autoLoops = 0
-  const t = s.track
-  if (s.finished || !isBuilding(t) || t.part === PLAN.length - 1) {
-    if (isBuilding(t)) s.set.set(t.part, t)
-    return nextTrack($)
-  }
-  await advance($)
-  s.said = 'auto · ' + s.said
-}
-
-async function setAuto($, on) {
-  s.auto = on
-  s.autoLoops = 0
-  if (on && !s.playing) await startAudio($)
-  else if (on) await scheduleAuto($)
-  else cancelAuto()
-  $.ui.invalidate('ui.render')
-}
-
-const normalizeLabel = (label) => normalizePhrase(label) || 'techno'
-
-// The next name in your list (this project, kept, starters), built from the
-// kick. In auto it keeps the tempo, so the beat carries straight on.
-async function nextTrack($) {
-  const list = [...s.repo, ...s.saved, ...STARTERS.map((p) => item(p, ''))].filter((it, i, all) => all.findIndex((x) => x.label === it.label) === i)
-  if (!list.length) return
-  const i = list.findIndex((it) => s.track && normalizeLabel(it.label) === s.track.phrase)
-  const nxt = list[(i + 1) % list.length]
-  let t = parseCode(nxt.code) ?? startOf(nxt.label)
-  if (!isBuilding(t)) t = atPart(t, 0)
-  if (s.auto && s.track) t = { ...t, bpm: s.track.bpm }
-  await pick($, encodeCode(cleanTrack(t)))
-  s.said = (s.auto ? 'auto · ' : '') + 'next track: ' + t.phrase
-}
-
-// The tracks of the finished set, in build order.
-const setTracks = () => [...s.set.keys()].sort((a, b) => a - b).map((k) => s.set.get(k))
-
-// Plays the whole build once, from the first kick to the outro.
-async function replay($) {
-  if (!s.set.size) return
-  s.status = 'rendering the set…'
-  $.ui.invalidate('ui.render')
-  await loadVoices($, s.track.phrase)
-  const audio = renderSet(setTracks(), { voices: voicesFor(s.track.phrase) })
-  const wav = toWav(audio)
-  if (s.dir) {
+// Starts the player when no player (or an older one) answers. It runs in its
+// own process group, so it outlives this chat; it quits when no Claude Code
+// process is left.
+async function ensurePlayer($) {
+  if (s.starting) return s.starting
+  s.starting = (async () => {
     try {
-      const before = await $.store.get('player')
-      const pid = await playerStart($, wav, 'once')
-      await playerKill($, [s.pid, before?.pid].filter((x) => x && x !== pid), 'the set replay replaced it')
-      const now = await $.clock.now()
-      s.pid = pid
-      s.playing = true
-      s.replaying = true
-      s.status = ''
-      cancelAuto()
-      await $.store.set('player', { pid, once: true, startedAt: now, endsAt: now + audio.seconds * 1000, loopMs: 0, stepMs: 0, code: encodeCode(s.track) })
-    } catch (err) {
-      s.status = 'audio failed: ' + String(err?.message ?? err)
+      const ps = await ask($).catch(() => null)
+      if (ps && versionAtLeast(ps.version, VERSION)) { s.ps = ps; s.down = ''; return true }
+      if (ps) { await ask($, { op: 'quit' }).catch(() => {}); await $.clock.sleep(400) }
+      const node = await $.process.run(['sh', '-lc', 'command -v node || ls /opt/homebrew/bin/node /usr/local/bin/node 2>/dev/null | head -1'], { timeoutMs: 10000 })
+      const bin = node.stdout.trim().split('\n')[0]
+      if (!bin) { s.down = 'techno needs node (brew install node)'; return false }
+      const log = s.home + '/Library/Caches/techno/daemon.out'
+      await $.process.run(['sh', '-c', 'mkdir -p "$(dirname "$3")"; perl -MPOSIX -e "POSIX::setsid(); exec @ARGV" "$1" "$2" </dev/null >>"$3" 2>&1 &', 'sh', bin, $.plugin.root + '/player/techno.mjs', log], { timeoutMs: 10000 })
+      // the first start compiles TechnoPlayer.app (swiftc), which takes a while
+      for (let i = 0; i < 120; i++) {
+        await $.clock.sleep(500)
+        const up = await ask($).catch(() => null)
+        if (up) { s.ps = up; s.down = ''; return true }
+      }
+      s.down = 'the player did not start: see ~/Library/Caches/techno/daemon.out'
+      return false
+    } finally {
+      s.starting = null
     }
-    $.ui.invalidate('ui.render')
-    return
-  }
-  if (s.ctrl) s.ctrl.abort()
-  const ctrl = new AbortController()
-  s.ctrl = ctrl
-  s.playing = true
-  s.replaying = true
-  s.status = ''
-  $.ui.invalidate('ui.render')
+  })()
+  return s.starting
+}
+
+// Sends a command; starts the player first when it is not there.
+async function cmd($, body) {
   try {
-    await $.audio.play({ base64: wav.toBase64(), mime: 'audio/wav' }, { signal: ctrl.signal, gain: GAIN })
-  } catch (err) {
-    if (s.ctrl === ctrl) s.status = 'audio failed: ' + String(err?.message ?? err)
-  }
-  if (s.ctrl === ctrl) {
-    s.ctrl = null
-    s.playing = false
-    s.replaying = false
-    $.ui.invalidate('ui.render')
-  }
-}
-
-// ---------- track changes ----------
-
-function noteLayers(t) {
-  const on = activeLayers(t)
-  for (const name of GRID_LAYERS) if (on[name]) s.seen.add(name)
-}
-
-// A new build: the set, the layers heard and the done card start over.
-function freshSet() {
-  s.set = new Map()
-  s.seen = new Set()
-  s.finished = false
-}
-
-async function setTrack($, next, { play } = {}) {
-  const clean = cleanTrack(next)
-  if (s.track && encodeCode(s.track) === encodeCode(clean)) return clean
-  if (!s.track || s.track.phrase !== clean.phrase) freshSet()
-  if (!s.track || s.track.phrase !== clean.phrase || s.track.part !== clean.part) s.autoLoops = 0
-  markUsed($)
-  if (s.track) s.history = [...s.history.slice(-29), s.track]
-  s.track = clean
-  s.status = ''
-  noteLayers(clean)
-  await $.store.set('track', clean)
-  if (play ?? (s.playing && !s.replaying)) await startAudio($)
-  $.ui.invalidate('ui.render')
-  return clean
-}
-
-async function change($, fn) {
-  if (!s.track) return
-  const t = { ...s.track, layers: { ...s.track.layers }, steps: { ...s.track.steps } }
-  fn(t)
-  const from = s.track
-  const to = await setTrack($, t)
-  s.you = ''
-  s.said = diffWords(from, to)
-}
-
-async function toggleLayer($, name) {
-  await change($, (t) => {
-    const want = !activeLayers(t)[name]
-    delete t.layers[name]
-    if (activeLayers(t)[name] !== want) t.layers[name] = want
-  })
-}
-
-async function editStep($, layer, i) {
-  const from = s.track
-  const to = await setTrack($, toggleStep(s.track, layer, i))
-  s.you = ''
-  s.said = diffWords(from, to)
-}
-
-// NEXT: remember the part you are leaving, then move to the next one.
-// After the outro, NEXT finishes the track and the done card appears.
-async function advance($) {
-  const t = s.track
-  if (!t) return
-  if (!isBuilding(t)) {
-    freshSet()
-    await setTrack($, atPart(t, 0), { play: true })
-    s.said = 'from the top: just the kick'
-    return
-  }
-  s.set.set(t.part, t)
-  if (t.part === PLAN.length - 1) {
-    s.finished = true
-    s.said = 'track done'
-    $.ui.invalidate('ui.render')
-    return
-  }
-  const to = await setTrack($, atPart(t, t.part + 1), { play: true })
-  s.you = ''
-  s.said = PLAN[to.part].section + ' · ' + PLAN[to.part].go
-}
-
-async function remix($) {
-  const t = s.track
-  freshSet()
-  await setTrack($, atPart({ ...t, dice: (t.dice + 1) % 1000, steps: {} }, 0), { play: true })
-  s.said = 'remix: new patterns, from the kick'
-}
-
-async function pick($, code) {
-  const t = parseCode(code) ?? startOf(code)
-  freshSet()
-  s.track = null
-  await setTrack($, t, { play: true })
-  s.you = ''
-  s.said = 'now playing: ' + t.phrase
-  s.screen = 'deck'
-  s.showShare = false
-  $.ui.invalidate('ui.render')
-}
-
-async function undo($) {
-  const prev = s.history.pop()
-  if (!prev) { s.status = 'nothing to undo'; $.ui.invalidate('ui.render'); return }
-  const from = s.track
-  s.track = prev
-  s.finished = false
-  s.said = 'undo: ' + diffWords(from, prev)
-  s.you = ''
-  await $.store.set('track', prev)
-  if (s.playing) await startAudio($)
-  $.ui.invalidate('ui.render')
-}
-
-async function keep($) {
-  const code = encodeCode(s.track)
-  if (s.saved.some((it) => it.code === code)) {
-    s.saved = s.saved.filter((it) => it.code !== code)
-    s.status = 'removed from your tracks'
-  } else {
-    s.saved = [item(s.track.phrase, describe(s.track), s.track), ...s.saved].slice(0, 20)
-    s.status = 'kept in your tracks'
-  }
-  await $.store.set('saved', s.saved)
-  $.ui.invalidate('ui.render')
-}
-
-// Share: one minute as an mp3 in ~/Music/techno, shown in Finder, and the
-// play line on the clipboard for a friend who has the mod.
-async function shareMp3($) {
-  await save($)
-  const where = s.status
-  await copyShare($)
-  if (where.startsWith('saved')) s.status = where + ' · shown in Finder · play line copied'
-  $.ui.invalidate('ui.render')
-}
-
-async function copyShare($) {
-  let ok = false
-  try {
-    const r = await $.ui.copy({ text: shareLine(s.track) })
-    ok = r?.isCopied !== false
+    s.ps = await ask($, body)
   } catch {
-    try {
-      const r = await $.process.run(['pbcopy'], { stdin: shareLine(s.track), timeoutMs: 5000 })
-      ok = r.exitCode === 0
-    } catch { /* no clipboard */ }
+    if (!(await ensurePlayer($))) { $.ui.invalidate('ui.render'); return null }
+    s.ps = await ask($, body).catch(() => s.ps)
   }
-  s.status = ok ? 'play line copied. Paste it to a friend who has the mod.' : 'copy the play line above'
-  if (!s.isOpen) $.ui.toast(ok ? 'Play line copied: ' + shareLine(s.track) : shareLine(s.track))
-  $.ui.invalidate('ui.render')
-}
-
-// The app lives in the band above the chat box; these show and hide it.
-function openApp($) {
-  s.isOpen = true
   markUsed($)
   $.ui.invalidate('ui.render')
+  return s.ps
 }
 
-// The bar follows you into every chat: once you used techno, a new session
-// shows it too (paused, on the same track) until you close it with its ×.
-function markUsed($) {
-  s.used = true
-  s.barClosed = false
-  if (!s.barStored) { s.barStored = true; $.store.set('bar', true) }
-}
-
-function closeBar($) {
-  s.barClosed = true
-  s.barStored = false
-  $.store.set('bar', false)
-  $.ui.invalidate('ui.render')
-}
-
-function hideApp($) {
-  s.isOpen = false
-  $.ui.invalidate('ui.render')
-}
-
-// Reads the session's repo: branch, recent commit subjects, project name.
-async function loadRepo($) {
+async function poll($) {
+  const before = s.ps?.rev
   try {
-    const cwd = await $.session.cwd()
-    s.repoName = cwd.split('/').filter(Boolean).pop() ?? ''
-    const out = [item(s.repoName, 'project')]
-    const branch = await $.process.run(['git', 'rev-parse', '--abbrev-ref', 'HEAD'], { timeoutMs: 5000 })
-    if (branch.exitCode === 0 && branch.stdout.trim()) out.push(item(branch.stdout.trim(), 'branch'))
-    const log = await $.process.run(['git', 'log', '-3', '--pretty=%s'], { timeoutMs: 5000 })
-    if (log.exitCode === 0) for (const line of log.stdout.split('\n').map((l) => l.trim()).filter(Boolean)) out.push(item(line.slice(0, 40), 'commit'))
-    s.repo = out.filter((it, i, all) => it.label && all.findIndex((x) => x.code === it.code) === i)
+    s.ps = await ask($)
+    s.down = ''
   } catch {
-    s.repo = []
+    if (s.ps) { s.ps = null; s.down = 'the player stopped' }
   }
+  if (s.ps?.rev !== before || s.ps?.playing) $.ui.invalidate('ui.render')
 }
 
-// Writes audio to ~/Music/techno as an mp3 (or a wav without ffmpeg).
-// `loops` repeats a loop that many times; the set is written as it is.
-async function writeAudio($, audio, name, loops) {
-  const home = (await $.env.get('HOME')) ?? '.'
-  const dir = home + '/Music/techno'
+// ---------- saving ----------
+
+// Writes one minute (four loops) of a track to ~/Music/techno as an mp3
+// (or a wav without ffmpeg), shows it in Finder.
+async function save($, code) {
+  const t = parseCode(code)
+  if (!t) return 'Nothing to save yet.'
+  const dir = s.home + '/Music/techno'
+  const name = code.replace(/[@+*]/g, '_')
   const tmp = dir + '/.' + name + '.wav'
-  const wav = toWav(audio)
-  const length = audio.seconds * loops
-  const fades = 'afade=t=in:d=0.5' + (loops > 1 ? ',afade=t=out:st=' + (length - 4).toFixed(2) + ':d=4' : '')
   s.status = 'saving…'
   $.ui.invalidate('ui.render')
   try {
+    const audio = render(t)
     await $.process.run(['mkdir', '-p', dir])
-    const dec = await $.process.run(['sh', '-c', 'base64 --decode > "$1"', 'sh', tmp], { stdin: wav.toBase64(), timeoutMs: 30000 })
+    const dec = await $.process.run(['sh', '-c', 'base64 --decode > "$1"', 'sh', tmp], { stdin: toWav(audio).toBase64(), timeoutMs: 30000 })
     if (dec.exitCode !== 0) throw new Error(dec.stderr.trim() || 'base64 failed')
-    const mp3 = dir + '/' + name + '.mp3'
-    let out = mp3
-    try {
-      const ff = await $.process.run(
-        ['ffmpeg', '-y', '-loglevel', 'error', '-stream_loop', String(loops - 1), '-i', tmp, '-af', fades, '-b:a', '192k', mp3],
-        { timeoutMs: 120000 },
-      )
-      if (ff.exitCode !== 0) throw new Error(ff.stderr.trim())
-      await $.process.run(['rm', '-f', tmp])
-    } catch {
-      out = dir + '/' + name + '.wav'
-      await $.process.run(['mv', tmp, out])
-    }
-    s.status = 'saved ' + out.replace(home, '~')
-    try { await $.process.run(['open', '-R', out], { timeoutMs: 5000 }) } catch { /* not macOS */ }
+    let out = dir + '/' + name + '.mp3'
+    const ff = await $.process.run(['ffmpeg', '-y', '-loglevel', 'error', '-stream_loop', '3', '-i', tmp, '-af', 'afade=t=in:d=0.5,afade=t=out:st=' + (audio.seconds * 4 - 4).toFixed(2) + ':d=4', '-b:a', '192k', out], { timeoutMs: 120000 }).catch(() => ({ exitCode: 1 }))
+    if (ff.exitCode === 0) await $.process.run(['rm', '-f', tmp])
+    else { out = dir + '/' + name + '.wav'; await $.process.run(['mv', tmp, out]) }
+    await $.process.run(['open', '-R', out], { timeoutMs: 5000 }).catch(() => {})
+    s.status = 'saved ' + out.replace(s.home, '~')
     return 'Saved ' + out
   } catch (err) {
     s.status = 'save failed: ' + String(err?.message ?? err)
@@ -672,230 +149,223 @@ async function writeAudio($, audio, name, loops) {
   }
 }
 
-const fileName = (t) => encodeCode(t).replace(/[@+*]/g, '_')
-
-// One minute (four loops) of the current state.
-async function save($) {
-  const t = s.track
-  if (!t) return 'Nothing to save yet. Start with /techno <phrase>.'
-  await loadVoices($, t.phrase)
-  return writeAudio($, render(t, { voices: voicesFor(t.phrase) }), fileName(t), 4)
-}
-
-// The whole build, from the first kick to the outro.
-async function saveSet($) {
-  if (!s.set.size) return save($)
-  s.status = 'rendering the set…'
+async function copyLine($, code) {
+  let ok = false
+  try { ok = (await $.ui.copy({ text: shareLine(code) }))?.isCopied !== false } catch {
+    try { ok = (await $.process.run(['pbcopy'], { stdin: shareLine(code), timeoutMs: 5000 })).exitCode === 0 } catch { /* no clipboard */ }
+  }
+  s.status = ok ? 'play line copied: ' + shareLine(code) : shareLine(code)
+  if (!s.isOpen) $.ui.toast(s.status)
   $.ui.invalidate('ui.render')
-  await loadVoices($, s.track.phrase)
-  return writeAudio($, renderSet(setTracks(), { voices: voicesFor(s.track.phrase) }), fileName(s.track) + '_set', 1)
 }
 
-async function doMove($, id) {
-  if (id === 'play') return startAudio($)
-  if (id === 'build' || id === 'advance' || id === 'finish') return advance($)
-  if (id === 'done') return replay($)
+// Share: one minute as an mp3, shown in Finder, and the play line copied.
+async function share($, code) {
+  await save($, code)
+  const where = s.status
+  await copyLine($, code)
+  if (where.startsWith('saved')) s.status = where + ' · play line copied'
+  $.ui.invalidate('ui.render')
+}
+
+// ---------- the app ----------
+
+function markUsed($) {
+  if (s.used && !s.barClosed) return
+  s.used = true
+  s.barClosed = false
+  $.store.set('bar', true)
+}
+
+function gridFor(code) {
+  if (!s.grids.has(code)) {
+    if (s.grids.size > 64) s.grids.clear()
+    const t = parseCode(code)
+    s.grids.set(code, t ? grid({ ...t, layers: Object.fromEntries(LAYERS.map((n) => [n, true])) }, 0) : {})
+  }
+  return s.grids.get(code)
+}
+
+// Reads the session's repo: the project, its branch and recent commits. The
+// player mixes these names into the tracks auto picks.
+async function loadRepo($) {
+  try {
+    const cwd = await $.session.cwd()
+    const out = [cwd.split('/').filter(Boolean).pop() ?? '']
+    const branch = await $.process.run(['git', 'rev-parse', '--abbrev-ref', 'HEAD'], { timeoutMs: 5000 })
+    if (branch.exitCode === 0 && branch.stdout.trim()) out.push(branch.stdout.trim())
+    const log = await $.process.run(['git', 'log', '-3', '--pretty=%s'], { timeoutMs: 5000 })
+    if (log.exitCode === 0) for (const line of log.stdout.split('\n').map((l) => l.trim()).filter(Boolean)) out.push(line.slice(0, 40))
+    s.repo = out.filter((x, i, all) => x && !x.startsWith('scratch') && all.indexOf(x) === i)
+  } catch {
+    s.repo = []
+  }
+}
+
+function describeNow() {
+  const v = s.ps?.view
+  if (!v) return 'nothing'
+  const t = parseCode(v.code)
+  return `"${v.phrase}", ${t ? describe(t) : v.mood}, ${v.section === 'handover' ? 'mixing in from ' + v.from : v.name + ` (part ${v.part + 1} of ${PLAN.length})`}`
 }
 
 // ---------- hooks ----------
 
 export function register(on) {
   on('session.start', async ($, e, next) => {
-    const saved = await $.store.get('track')
-    if (saved && typeof saved === 'object') { s.track = cleanTrack(saved); noteLayers(s.track) }
-    const kept = await $.store.get('saved')
-    if (Array.isArray(kept)) s.saved = kept.filter((it) => it && typeof it.code === 'string')
-    if (s.track) s.screen = 'deck'
-    if (s.track && (await $.store.get('bar')) === true) { s.used = true; s.barStored = true }
+    s.home = (await $.env.get('HOME')) ?? ''
+    s.sock = s.home + '/Library/Caches/techno/techno.sock'
+    if ((await $.store.get('bar')) === true) s.used = true
     await loadRepo($)
-    await playerInit($)
-    // one tick a second: the countdown to the next part moves, and every
-    // second tick the chat follows the shared background player
-    if (!s.syncTimer) {
-      let n = 0
-      s.syncTimer = $.clock.every(1000, () => {
-        n++
-        if (s.dir && n % 2 === 0) syncPlayer($).catch(() => {})
-        if (s.auto && s.playing && !s.replaying) $.ui.invalidate('ui.render')
-      })
-    }
+    // the first chat on 0.8 hands the kept tracks and the last track to the player
+    const kept = await $.store.get('saved')
+    const track = await $.store.get('track')
+    if (await ensurePlayer($)) await cmd($, { op: 'hello', repo: s.repo, saved: Array.isArray(kept) ? kept : [], track: track && typeof track === 'object' ? encodeCode(cleanTrack(track)) : null })
+    if (!s.pollTimer) s.pollTimer = $.clock.every(1000, () => { poll($).catch(() => {}) })
     await $.tool.register({
       name: 'jam',
       description:
-        "Change the techno loop in the user's techno pane (the techno mod). Use it when the user asks to change the music: darker or brighter, more or less energy, faster or slower, add or drop a layer, new patterns, the next part of the build, or a new phrase. Pass only what changes. " +
-        'mood: sad (minor), mysterious (hijaz, arabic) or dark (phrygian); it sets the sound and the scale together. energy: 0 minimal, 1 rolling, 2 driving, 3 peak, 4 rave. ' +
-        'A track is built in parts (intro, groove, build, peak, break, drop, outro); next: true moves to the next part, as the NEXT button does. ' +
-        'layers: true forces a layer on, false forces it off, "auto" gives it back to the build. dice: true rolls new patterns. phrase: a new phrase starts a new track from the kick. ' +
-        'note: a few words for the pane that say what you changed. The result gives the new track and its share line. Reply to the user in one short line.',
+        "Change the techno music in the user's techno pane (the techno mod). Use it when the user asks to change the music: darker or brighter, more or less energy, faster or slower, add or drop a layer, new patterns, the next part, the next or previous track, a new phrase, auto on or off, play or stop. Pass only what changes. " +
+        'mood: sad (minor), mysterious (hijaz, arabic) or dark (phrygian); it sets the sound, the scale and the tempo together. energy: 0 minimal, 1 rolling, 2 driving, 3 peak, 4 rave. ' +
+        'A track is a long set: intro, groove, build, three drops with breakdowns between them, an outro that mixes into the next track. next: true moves to the next part. track: "next" mixes into the next track now, "previous" goes back to the one before. ' +
+        'layers (kick, bass, hats, clap, perc, ride, pad, rumble, acid, voice, stab): true forces a layer on, false off, "auto" gives it back to the arrangement. dice: true rolls new patterns. phrase: a new phrase starts a new track. favorite: true adds the track to the favorites. ' +
+        'note: a few words for the pane that say what you changed. Reply to the user in one short line.',
       inputSchema: {
         type: 'object',
         properties: {
           phrase: { type: 'string', description: 'A new phrase. It seeds a whole new track; its letters become the riff.' },
-          next: { type: 'boolean', description: 'Move the build to its next part (or finish it after the outro)' },
+          next: { type: 'boolean', description: 'Move to the next part of the track' },
+          track: { enum: ['next', 'previous'], description: 'Mix into the next track now, or go back to the previous one' },
           bpm: { type: 'integer', minimum: BPM_MIN, maximum: BPM_MAX },
           mood: { enum: VIBES.map((v) => v.name) },
           energy: { type: 'integer', minimum: 0, maximum: 4 },
           swing: { type: 'integer', minimum: 0, maximum: 3, description: '0 straight, 3 most shuffle on hats and percussion' },
           transpose: { type: 'integer', minimum: 0, maximum: 11, description: 'Semitones up from the phrase key' },
           dice: { type: 'boolean', description: 'Roll new patterns for the same phrase' },
-          layers: {
-            type: 'object',
-            properties: Object.fromEntries(LAYERS.map((n) => [n, { enum: [true, false, 'auto'] }])),
-            additionalProperties: false,
-          },
-          play: { type: 'boolean', description: 'true starts the loop, false stops it' },
-          auto: { type: 'boolean', description: 'true lets the mod build and mix by itself (a part per loop, then the next track); false stops that' },
+          layers: { type: 'object', properties: Object.fromEntries(LAYERS.map((n) => [n, { enum: [true, false, 'auto'] }])), additionalProperties: false },
+          favorite: { type: 'boolean', description: 'true adds the playing track to the favorites, false removes it' },
+          play: { type: 'boolean', description: 'true starts the music, false stops it' },
+          auto: { type: 'boolean', description: 'true lets the set play by itself (parts, drops, then the next track); false stays on a part until next' },
           note: { type: 'string', description: 'A few words for the pane, like "darker, acid on"' },
         },
       },
     })
-    await $.command.register({ name: 'techno', description: 'Open the techno app: pick a track and build it up', argumentHint: '[phrase or share code | stop | save | code]', immediate: true })
+    await $.command.register({ name: 'techno', description: 'Show or hide the techno app', argumentHint: '[phrase or share code | stop | save | code]', immediate: true })
     return next(e)
   })
 
   on('command.run', { command: 'techno' }, async ($, e) => {
     const arg = String(e.args ?? '').trim()
     const word = arg.toLowerCase()
-    if (word === 'stop') { stopAudio($, 'the /techno stop command'); return { text: 'Stopped.' } }
-    if (word === 'save') return { text: await save($) }
-    if (word === 'code') return { text: s.track ? shareLine(s.track) : 'No track yet. Start with /techno <phrase>.' }
-    if (word === 'play' && s.track) await startAudio($)
-    else if (arg) await pick($, arg)
-    else if (s.isOpen) { hideApp($); return {} }
-    openApp($)
+    if (word === 'stop') { await cmd($, { op: 'pause' }); return { text: 'Stopped.' } }
+    if (word === 'save') return { text: s.ps ? await save($, s.ps.view.code) : 'Nothing plays yet.' }
+    if (word === 'code') return { text: s.ps ? shareLine(s.ps.view.code) : 'No track yet. Start with /techno <phrase>.' }
+    if (word === 'play') await cmd($, { op: 'play' })
+    else if (arg) { await cmd($, { op: 'pick', code: arg }); s.screen = 'deck' }
+    else if (s.isOpen) { s.isOpen = false; $.ui.invalidate('ui.render'); return {} }
+    s.isOpen = true
+    markUsed($)
+    $.ui.invalidate('ui.render')
     return {}
   })
 
   on('tool.call', { tool: TOOL }, async ($, e) => {
-    if (typeof e.auto === 'boolean' && s.track) await setAuto($, e.auto)
-    if (e.auto !== undefined && Object.keys(e).every((k) => ['tool', 'tool_use_id', 'auto', 'note', 'agentId'].includes(k))) {
-      s.said = e.note ? String(e.note).slice(0, 80) : 'auto ' + (s.auto ? 'on' : 'off')
-      return { result: `Auto is ${s.auto ? 'on: the mod builds a part per loop, then mixes into the next track' : 'off'}. Now playing: "${s.track?.phrase ?? 'nothing'}". (techno v${VERSION})` }
-    }
-    if (e.next && s.track && !e.phrase) {
-      const from = s.track
-      await advance($)
-      if (e.play === false) stopAudio($, 'the jam tool')
-      s.you = s.lastPrompt
-      if (e.note) s.said = String(e.note).slice(0, 80)
-      s.screen = 'deck'
-      openApp($)
-      const where = s.finished ? 'the track is done' : `now at ${PLAN[s.track.part].section}, part ${s.track.part + 1} of ${PLAN.length}`
-      return { result: `Moved on: ${where}. Changed: ${diffWords(from, s.track)}. Share line: ${shareLine(s.track)} (techno v${VERSION})` }
-    }
-    const from = s.track ?? startOf(e.phrase || 'techno')
-    let t = e.phrase ? startOf(e.phrase) : { ...from, layers: { ...from.layers } }
-    if (e.phrase) freshSet()
-    for (const k of ['bpm', 'energy', 'swing', 'transpose']) if (e[k] !== undefined) t[k] = e[k]
-    if (VIBES.some((v) => v.name === e.mood)) t = { ...withVibe(t, e.mood), ...(e.bpm !== undefined ? { bpm: e.bpm } : {}), ...(e.energy !== undefined ? { energy: e.energy } : {}) }
-    if (e.dice) t.dice = (t.dice + 1) % 1000
-    for (const [name, v] of Object.entries(e.layers ?? {})) {
-      if (!LAYERS.includes(name)) continue
-      if (v === 'auto') delete t.layers[name]
-      else t.layers[name] = v === true
-    }
-    t = await setTrack($, t, { play: e.play !== false && (s.playing || e.play === true || !s.track || !!e.phrase) })
-    if (e.play === false) stopAudio($, 'the jam tool')
-    else if (e.play === true && !s.playing) await startAudio($)
+    const done = []
+    if (e.phrase) { await cmd($, { op: 'pick', code: e.phrase }); done.push('new track ' + e.phrase) }
+    if (e.track === 'next') { await cmd($, { op: 'skip' }); done.push('mixing into the next track') }
+    if (e.track === 'previous') { await cmd($, { op: 'prev' }); done.push('back to the previous track') }
+    if (e.next) { await cmd($, { op: 'next' }); done.push('next part') }
+    const jam = { op: 'jam', note: e.note }
+    for (const k of ['mood', 'bpm', 'energy', 'swing', 'transpose', 'dice', 'layers']) if (e[k] !== undefined) jam[k] = e[k]
+    if (Object.keys(jam).length > 2) { await cmd($, jam); done.push('changed ' + Object.keys(jam).filter((k) => k !== 'op' && k !== 'note').join(', ')) }
+    if (typeof e.auto === 'boolean') { await cmd($, { op: 'auto', on: e.auto }); done.push('auto ' + (e.auto ? 'on' : 'off')) }
+    if (typeof e.favorite === 'boolean' && s.ps && s.ps.fav !== e.favorite) { await cmd($, { op: 'fav' }); done.push(e.favorite ? 'added to favorites' : 'removed from favorites') }
+    if (e.play === true) await cmd($, { op: 'play' })
+    if (e.play === false) await cmd($, { op: 'pause' })
+    else if (!s.ps?.playing && (e.phrase || e.track)) await cmd($, { op: 'play' })
+    if (!s.ps) return { result: 'The techno player is not running: ' + (s.down || 'unknown reason') }
     s.you = s.lastPrompt
-    s.said = (e.note && String(e.note).slice(0, 80)) || diffWords(from, t)
+    s.isOpen = true
     s.screen = 'deck'
-    openApp($)
-    return { result: `Now playing: "${t.phrase}", ${describe(t)}. Changed: ${diffWords(from, t)}. Share line: ${shareLine(t)} (techno v${VERSION})` }
+    $.ui.invalidate('ui.render')
+    return { result: `${done.join('; ') || 'no change'}. Now: ${describeNow()}. Auto ${s.ps.auto ? 'on' : 'off'}, ${s.ps.playing ? 'playing' : 'stopped'}. Share line: ${shareLine(s.ps.view.code)} (techno v${VERSION})` }
   })
 
-  // Remember what the user asked, for the pane. While a loop plays, tell Claude about it.
+  // Remember what the user asked, for the pane. While music plays, tell Claude about it.
   on('prompt.submit', async ($, e, next) => {
     s.lastPrompt = String(e.text ?? '').replace(/\s+/g, ' ').trim().slice(0, 80)
-    if (!s.playing || !s.track) return next(e)
-    const where = isBuilding(s.track) ? `, ${PLAN[s.track.part].section} (part ${s.track.part + 1} of ${PLAN.length})` : ''
-    const note = `The techno mod is playing a loop in the user's techno pane: "${s.track.phrase}", ${describe(s.track)}${where}. If this prompt is about the music, change it with the ${TOOL} tool and reply in one short line.`
+    if (!s.ps?.playing) return next(e)
+    const note = `The techno mod is playing in the user's techno pane: ${describeNow()}, auto ${s.ps.auto ? 'on' : 'off'}. If this prompt is about the music, change it with the ${TOOL} tool and reply in one short line.`
     return next({ ...e, context: [...(e.context ?? []), note] })
   })
 
-  // The app, drawn in the band above the chat box. Hidden: a one-line player
-  // while music plays, otherwise nothing.
+  // The app, drawn in the band above the chat box. Hidden: a one-line bar,
+  // once techno was used, until its ×.
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
-    if (!s.isOpen && !(s.track && s.used && !s.barClosed)) return next(e)
+    if (!s.isOpen && !(s.used && !s.barClosed && (s.ps || s.down))) return next(e)
     const ui = $.ui.resolve(e)
-    const t = s.track
+    const ps = s.ps
+    const v = ps?.view
+    const t = v ? parseCode(v.code) : null
     const now = await $.clock.now()
-    const coach = nextMove(t, { playing: s.playing && !s.replaying, finished: s.finished })
-    // in auto the mod presses NEXT itself, so nothing else is lit and the tip says when
-    const move = s.auto && s.playing && coach.key === 'do-move' ? { ...coach, key: 'auto', tip: coach.tip + ' · auto moves on next loop' } : coach
-    const code = t ? encodeCode(t) : ''
-    const layersOn = t ? activeLayers(t) : {}
-    const looping = s.playing && !s.replaying && s.loopMs
-    const step = looping ? Math.floor(((((now - s.startedAt) % s.loopMs) + s.loopMs) % s.loopMs) / s.stepMs) : 0
-    // the grid shows the layers this build has used so far, in a fixed order
-    const all = t ? gridFor({ ...t, layers: Object.fromEntries(LAYERS.map((n) => [n, true])) }) : {}
-    const rows = GRID_LAYERS.filter((n) => s.seen.has(n) || layersOn[n]).map((n) => [n, all[n], LAYER_COLORS[n], !!layersOn[n], t.layers[n] === false])
-    // what comes next, and when (auto moves on at a loop boundary)
-    let upcoming = null
-    if (t && !s.finished) {
-      if (!isBuilding(t)) upcoming = { name: 'the build', adds: false }
-      else if (t.part < PLAN.length - 1) upcoming = { name: PLAN[t.part + 1].name, adds: PLAN[t.part + 1].adds, layer: PLAN[t.part + 1].layer }
-      else upcoming = { name: 'the end', adds: false }
-      if (upcoming && s.auto && looping) {
-        const pos = (((now - s.startedAt) % s.loopMs) + s.loopMs) % s.loopMs
-        upcoming.inMs = Math.max(0, loopsFor(t) - s.autoLoops - 1) * s.loopMs + (s.loopMs - pos)
-      }
-    }
-    // the next sound as a dashed row, where it will play
-    if (upcoming?.layer && !rows.some((r) => r[0] === upcoming.layer)) rows.push([upcoming.layer, all[upcoming.layer] ?? '.'.repeat(16), LAYER_COLORS[upcoming.layer] ?? ['#888888', '#888888'], false, false, true])
+    const heard = t ? activeLayers(t) : {}
+    const all = v ? gridFor(v.code) : {}
+    // the rows: every layer that plays, plus the next one as a dashed row
+    const rows = t ? GRID_LAYERS.filter((n) => heard[n] || t.layers[n] === false).map((n) => [n, all[n] ?? '.'.repeat(16), LAYER_COLORS[n], !!heard[n], t.layers[n] === false]) : []
+    if (v?.next?.layer && GRID_LAYERS.includes(v.next.layer) && !rows.some((r) => r[0] === v.next.layer)) rows.push([v.next.layer, all[v.next.layer] ?? '.'.repeat(16), LAYER_COLORS[v.next.layer], false, false, true])
+    const looping = !!(ps?.playing && ps.barStartedAt)
+    const sinceBar = looping ? Math.max(0, now - ps.barStartedAt) : 0
+    const step = looping ? (v.bar * 16 + Math.min(15, Math.floor(sinceBar / ps.stepMs))) % 128 : 0
+    const nextIn = ps?.nextInMs !== null && ps?.nextInMs !== undefined ? Math.max(0, ps.nextInMs - (now - ps.now)) : null
     const vm = {
       surface: e.surface,
       screen: s.screen,
-      showShare: s.showShare,
-      track: t,
-      code,
-      desc: t ? describe(t) : '',
-      key: t ? keyName(t) : '',
-      mood: t ? moodName(t) : '',
-      next: upcoming,
-      source: t ? sourceOf(t) : '',
-      hearing: t ? hearing(layersOn) : '',
-      playing: s.playing,
-      replaying: s.replaying,
-      auto: s.auto,
-      finished: s.finished,
-      set: { parts: s.set.size, length: setLength() },
-      move,
-      isKept: s.saved.some((it) => it.code === code),
-      shareLine: t ? shareLine(t) : '',
+      down: s.down,
+      ps,
+      view: v,
+      playing: !!ps?.playing,
+      auto: !!ps?.auto,
+      fav: !!ps?.fav,
+      nextIn,
+      editOpen: s.editOpen,
+      acidOn: !!heard.acid,
+      favorites: ps?.favorites ?? [],
+      recent: ps?.recent ?? [],
+      playlist: ps?.playlist ?? null,
+      canUndo: !!ps?.canUndo,
+      said: ps?.said ?? '',
       you: s.you,
-      said: s.said,
       status: s.status,
-      crate: { repo: s.repo, saved: s.saved, starters: STARTERS.map((p) => item(p, '')) },
-      gridEl: t && rows.length ? ui.Client({ key: 'grid', module: './grid.client.js', props: { rows, step, stepMs: s.stepMs || 115, playing: !!looping, stamp: s.startedAt } }) : null,
+      crate: { repo: s.repo, starters: STARTERS },
+      gridEl: rows.length ? ui.Client({ key: 'grid', module: './grid.client.js', props: { rows, step, stepMs: ps?.stepMs || 115, playing: looping, stamp: ps?.barStartedAt ?? 0 } }) : null,
     }
-    const redraw = () => $.ui.invalidate('ui.render')
+    const go = (body) => () => cmd($, body)
     const act = {
-      play: () => startAudio($),
-      stop: () => stopAudio($, 'the stop button'),
-      energy: (d) => change($, (x) => { x.energy = Math.max(0, Math.min(4, x.energy + d)) }),
-      setMood: (name) => change($, (x) => Object.assign(x, withVibe(x, name))),
-      mood: (d) => change($, (x) => Object.assign(x, withVibe(x, VIBES[Math.max(0, Math.min(VIBES.length - 1, vibeOf(x) + d))].name))),
-      bpm: (d) => change($, (x) => { x.bpm = Math.max(BPM_MIN, Math.min(BPM_MAX, x.bpm + d)) }),
-      dice: () => change($, (x) => { x.dice = (x.dice + 1) % 1000 }),
-      undo: () => undo($),
-      keep: () => keep($),
-      share: () => shareMp3($),
-      copy: () => copyShare($),
-      closeShare: () => { s.showShare = false; s.status = ''; redraw() },
-      save: () => save($),
-      saveSet: () => saveSet($),
-      replay: () => replay($),
-      remix: () => remix($),
-      pick: (c) => pick($, c),
-      phrase: (text) => (String(text).trim() ? pick($, text) : undefined),
-      screen: (id) => { s.screen = id; redraw() },
-      doMove: () => { s.autoLoops = 0; return doMove($, move.id) },
-      open: () => openApp($),
-      close: () => hideApp($),
-      auto: () => setAuto($, !s.auto),
-      nextTrack: () => nextTrack($),
-      closeBar: () => closeBar($),
+      play: go({ op: 'play' }),
+      stop: go({ op: 'pause' }),
+      auto: go({ op: 'auto', on: !ps?.auto }),
+      next: go({ op: 'next' }),
+      skip: go({ op: 'skip' }),
+      prev: go({ op: 'prev' }),
+      fav: go({ op: 'fav' }),
+      toggleFav: (code) => cmd($, { op: 'fav', code }),
+      mood: (name) => cmd($, { op: 'jam', mood: name }),
+      dice: go({ op: 'dice' }),
+      melody: go({ op: 'layer', name: 'acid' }),
+      undo: go({ op: 'undo' }),
+      bpm: (d) => cmd($, { op: 'jam', bpm: Math.max(BPM_MIN, Math.min(BPM_MAX, (v?.bpm ?? 128) + d)) }),
+      pick: (code) => { s.screen = 'deck'; return cmd($, { op: 'pick', code, playlist: null }) },
+      playFavorite: (code) => { s.screen = 'deck'; return cmd($, { op: 'pick', code, playlist: 'favorites' }) },
+      playFavorites: () => { s.screen = 'deck'; return cmd($, { op: 'playlist', name: 'favorites' }) },
+      phrase: (text) => (String(text).trim() ? act.pick(String(text).trim()) : undefined),
+      share: (code) => share($, code ?? v.code),
+      copy: (code) => copyLine($, code ?? v.code),
+      screen: (id) => { s.screen = id; $.ui.invalidate('ui.render') },
+      edit: () => { s.editOpen = !s.editOpen; $.ui.invalidate('ui.render') },
+      open: () => { s.isOpen = true; s.screen = 'deck'; $.ui.invalidate('ui.render') },
+      close: () => { s.isOpen = false; $.ui.invalidate('ui.render') },
+      closeBar: () => { s.barClosed = true; $.store.set('bar', false); $.ui.invalidate('ui.render') },
+      retry: () => ensurePlayer($).then(() => $.ui.invalidate('ui.render')),
     }
     const theirs = await next(e)
     return ui.Box({ flexDirection: 'column', children: [s.isOpen ? appView(ui, vm, act) : miniView(ui, vm, act), theirs] })
@@ -905,25 +375,16 @@ export function register(on) {
   // { step, layer } for a click on a cell.
   on('ui.message', async ($, e, next) => {
     const d = e.element === 'grid' ? e.data : null
-    if (d && typeof d.toggle === 'string' && LAYERS.includes(d.toggle)) {
-      await toggleLayer($, d.toggle)
-      return {}
-    }
-    if (d && typeof d.layer === 'string' && GRID_LAYERS.includes(d.layer) && Number.isInteger(d.step)) {
-      await editStep($, d.layer, d.step)
-      return {}
-    }
+    if (d && typeof d.toggle === 'string' && LAYERS.includes(d.toggle)) { await cmd($, { op: 'layer', name: d.toggle }); return {} }
+    if (d && typeof d.layer === 'string' && GRID_LAYERS.includes(d.layer) && Number.isInteger(d.step)) { await cmd($, { op: 'step', layer: d.layer, i: d.step }); return {} }
     return next(e)
   })
 
-  // The background player plays on for the other chats; its watcher stops it
-  // when the last Claude Code process ends. The per-chat player stops here.
+  // The player plays on for the other chats; it stops when the last Claude
+  // Code process ends.
   on('session.end', async ($, e, next) => {
-    if (s.syncTimer) s.syncTimer.cancel()
-    s.syncTimer = null
-    if (s.ctrl) s.ctrl.abort()
-    s.ctrl = null
-    s.playing = false
+    if (s.pollTimer) s.pollTimer.cancel()
+    s.pollTimer = null
     return next(e)
   })
 }

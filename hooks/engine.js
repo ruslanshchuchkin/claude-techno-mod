@@ -4,7 +4,7 @@
 // A track is a small state object. The phrase seeds everything: the key, the
 // patterns, and the riff, whose notes are the phrase's own letters.
 
-export const LAYERS = ['kick', 'bass', 'hats', 'clap', 'perc', 'acid', 'stab', 'rumble', 'voice']
+export const LAYERS = ['kick', 'bass', 'hats', 'clap', 'perc', 'acid', 'stab', 'rumble', 'voice', 'ride', 'pad']
 export const MOODS = ['pitch black', 'dark', 'deep', 'warm', 'bright']
 export const ENERGIES = ['minimal', 'rolling', 'driving', 'peak', 'rave']
 const NOTE_NAMES = ['c', 'c#', 'd', 'd#', 'e', 'f', 'f#', 'g', 'g#', 'a', 'a#', 'b']
@@ -50,32 +50,52 @@ export const STEPS = 16
 export const BPM_MIN = 110
 export const BPM_MAX = 150
 
-// The layers the step grid shows (rumble has no steps of its own: it is the kick's tail).
-export const GRID_LAYERS = ['kick', 'hats', 'bass', 'perc', 'clap', 'acid', 'stab']
+// The layers the step grid shows (rumble has no steps of its own: it is the
+// kick's tail; the pad is one long swell; the voice says the name once).
+export const GRID_LAYERS = ['kick', 'hats', 'bass', 'perc', 'clap', 'ride', 'acid', 'stab']
 
 // The build: a track starts with the kick alone and NEXT walks it through a
-// set, one part at a time. `part` in a track is an index here; null means the
-// old full-track behaviour where mood and energy pick the layers.
-export const SECTIONS = ['intro', 'groove', 'build', 'peak', 'break', 'drop', 'outro']
-// Minimal on purpose: music to work to. The kick, the sub and the drums roll
-// for a long time before the clap; the acid riff is not in the plan (Claude or
-// a grid click can still bring it in).
+// long set, one part at a time. `part` in a track is an index here; null means
+// the old full-track behaviour where mood and energy pick the layers.
+export const SECTIONS = ['intro', 'groove', 'build', 'drop', 'break', 'outro']
+// Minimal on purpose: music to work to. About seven minutes with auto: a long
+// intro, three drops with a breakdown between them, and an outro that hands
+// over to the next track layer by layer. No chord stabs (Ruslan, 2026-10-03:
+// "they make the track less serious"); the ride and the dark pad take their place.
 // `name` is what the part brings, for the pane ("rumble in 0:12"); `adds` is
 // true when that is a new sound and not a new section. `layer` is the one new
-// layer, for the dashed "next" row in the grid. The voice says the track's
-// name: a whisper over the peak and the breakdown, a deep voice on the drop.
+// layer, for the dashed "next" row in the grid. `loops` is how long auto plays
+// it. `rise` puts a riser on its last loop (a drop comes next). The voice says
+// the track's name: a whisper in the second breakdown, a deep voice on drop 3.
+const FULL = ['kick', 'bass', 'hats', 'rumble', 'perc', 'clap']
 export const PLAN = [
-  { section: 'intro', energy: 0, layers: ['kick'], name: 'kick', adds: true, layer: 'kick', go: 'start', tip: 'Just the kick' },
-  { section: 'intro', energy: 0, layers: ['kick', 'bass'], name: 'deep bass', adds: true, layer: 'bass', go: 'add the deep bass', tip: 'Kick and a deep sub' },
-  { section: 'groove', energy: 1, layers: ['kick', 'bass', 'hats'], name: 'hats', adds: true, layer: 'hats', go: 'add hats', tip: 'Offbeat hats, the groove rolls' },
-  { section: 'groove', energy: 1, layers: ['kick', 'bass', 'hats', 'rumble'], name: 'rumble', adds: true, layer: 'rumble', go: 'add the rumble', tip: 'The rumble fills the low end' },
-  { section: 'build', energy: 2, layers: ['kick', 'bass', 'hats', 'rumble', 'perc'], name: 'percussion', adds: true, layer: 'perc', go: 'add percussion', tip: 'Percussion, still no clap' },
-  { section: 'build', energy: 2, layers: ['kick', 'bass', 'hats', 'rumble', 'perc', 'clap'], name: 'clap', adds: true, layer: 'clap', go: 'add the clap', tip: 'The clap on 2 and 4' },
-  { section: 'peak', energy: 3, layers: ['kick', 'bass', 'hats', 'rumble', 'perc', 'clap', 'stab', 'voice'], name: 'dub chord', adds: true, layer: 'stab', go: 'add the dub chord', tip: 'A dub chord and a whisper' },
-  { section: 'break', energy: 2, layers: ['hats', 'perc', 'stab', 'voice'], name: 'breakdown', adds: false, go: 'the breakdown', tip: 'The kick drops out. Breathe' },
-  { section: 'drop', energy: 3, layers: ['kick', 'bass', 'hats', 'rumble', 'perc', 'clap', 'stab', 'voice'], name: 'drop', adds: false, go: 'the drop', tip: 'The low end slams back in' },
-  { section: 'outro', energy: 1, layers: ['kick', 'bass', 'hats', 'rumble'], name: 'outro', adds: false, go: 'the outro', tip: 'Back to kick, sub and rumble' },
+  { section: 'intro', energy: 0, loops: 2, layers: ['kick'], name: 'kick', adds: true, layer: 'kick', go: 'start', tip: 'Just the kick' },
+  { section: 'intro', energy: 0, loops: 2, layers: ['kick', 'bass'], name: 'deep bass', adds: true, layer: 'bass', go: 'add the deep bass', tip: 'Kick and a deep sub' },
+  { section: 'groove', energy: 1, loops: 2, layers: ['kick', 'bass', 'hats'], name: 'hats', adds: true, layer: 'hats', go: 'add hats', tip: 'Offbeat hats, the groove rolls' },
+  { section: 'groove', energy: 1, loops: 2, layers: ['kick', 'bass', 'hats', 'rumble'], name: 'rumble', adds: true, layer: 'rumble', go: 'add the rumble', tip: 'The rumble fills the low end' },
+  { section: 'build', energy: 2, loops: 2, rise: true, layers: ['kick', 'bass', 'hats', 'rumble', 'perc'], name: 'percussion', adds: true, layer: 'perc', go: 'add percussion', tip: 'Percussion, then a rise' },
+  { section: 'drop', energy: 3, loops: 4, layers: FULL, name: 'drop 1', adds: true, layer: 'clap', go: 'drop 1', tip: 'Drop 1: the clap comes in' },
+  { section: 'break', energy: 1, loops: 2, rise: true, layers: ['hats', 'perc', 'pad'], name: 'breakdown', adds: true, layer: 'pad', go: 'the breakdown', tip: 'The kick drops out. A dark pad' },
+  { section: 'drop', energy: 3, loops: 4, layers: [...FULL, 'ride'], name: 'drop 2', adds: true, layer: 'ride', go: 'drop 2', tip: 'Drop 2: the ride on top' },
+  { section: 'break', energy: 1, loops: 2, rise: true, layers: ['perc', 'pad', 'voice'], name: 'breakdown 2', adds: false, go: 'the second breakdown', tip: 'Only the pad and a whisper' },
+  { section: 'drop', energy: 3, loops: 4, layers: [...FULL, 'ride', 'voice'], name: 'drop 3', adds: false, go: 'drop 3', tip: 'Drop 3: everything, the last peak' },
+  { section: 'outro', energy: 1, loops: 1, layers: ['kick', 'bass', 'hats', 'rumble', 'perc'], name: 'outro', adds: false, go: 'the outro', tip: 'The next track comes in' },
 ]
+// Old codes (p0..p9) named parts of the old ten-part build; `parseCode` moves
+// them to the same section here. New codes use a<n>.
+const OLD_PARTS = [0, 1, 2, 3, 4, 5, 7, 6, 9, 10]
+
+// The handover (auto, after the outro): the old track takes one layer out per
+// step while the new one brings one in, then the whole low end swaps at once.
+// Each step plays two loops; after the last one the new track goes on from its
+// build (`HANDOVER_TO`), so the music never starts again from a lone kick.
+export const HANDOVER = [
+  { from: ['kick', 'bass', 'hats', 'rumble', 'perc'], to: ['hats'] },
+  { from: ['kick', 'bass', 'rumble', 'perc'], to: ['hats', 'perc'] },
+  { from: ['kick', 'bass', 'rumble'], to: ['hats', 'perc', 'clap'] },
+]
+export const HANDOVER_LOOPS = 2
+export const HANDOVER_TO = 4
 
 // ---------- seed helpers ----------
 
@@ -171,7 +191,6 @@ function character(t) {
 
 // Which layers play: an explicit on/off wins, otherwise mood and energy decide.
 export function activeLayers(t) {
-  const { flavor } = character(t)
   if (t.part !== null && t.part !== undefined) {
     const plan = PLAN[t.part].layers
     const out = {}
@@ -185,9 +204,11 @@ export function activeLayers(t) {
     clap: t.energy >= 1,
     perc: t.energy >= 2,
     acid: false,
-    stab: flavor === 'dub' || t.energy >= 4,
+    stab: false,
     rumble: t.mood <= 1 && t.energy >= 1,
     voice: false,
+    ride: t.energy >= 4,
+    pad: false,
   }
   const out = {}
   for (const name of LAYERS) out[name] = t.layers[name] ?? auto[name]
@@ -212,7 +233,7 @@ export function describe(t) {
 
 // ---------- share codes ----------
 // late-night-deploy@128m1e2d3s1t5p4+acid-perc*kick00040000
-// p<n> is the part of the build; *<layer><on hex4><off hex4> are step edits.
+// a<n> is the part of the build (p<n> in old codes); *<layer><on hex4><off hex4> are step edits.
 
 const hex4 = (n) => n.toString(16).padStart(4, '0')
 
@@ -222,7 +243,7 @@ export function encodeCode(t) {
   if (t.swing) code += 's' + t.swing
   if (t.transpose) code += 't' + t.transpose
   if (t.scale !== null && t.scale !== undefined) code += 'k' + t.scale
-  if (t.part !== null && t.part !== undefined) code += 'p' + t.part
+  if (t.part !== null && t.part !== undefined) code += 'a' + t.part
   for (const name of LAYERS) if (name in t.layers) code += (t.layers[name] ? '+' : '-') + name
   for (const name of GRID_LAYERS) if (t.steps?.[name]) code += '*' + name + hex4(t.steps[name][0]) + hex4(t.steps[name][1])
   return code
@@ -232,21 +253,21 @@ export function parseCode(text) {
   const s = String(text ?? '').trim().toLowerCase().replace(/^\/?techno\s+/, '')
   const at = s.lastIndexOf('@')
   if (at <= 0) return null
-  const m = s.slice(at + 1).match(/^(\d{2,3})(?:m([0-4]))?(?:e([0-4]))?(?:d(\d{1,3}))?(?:s([0-3]))?(?:t(\d{1,2}))?(?:k([0-4]))?(?:p(\d))?((?:[+-][a-z]+)*)((?:\*[a-z]+[0-9a-f]{8})*)$/)
+  const m = s.slice(at + 1).match(/^(\d{2,3})(?:m([0-4]))?(?:e([0-4]))?(?:d(\d{1,3}))?(?:s([0-3]))?(?:t(\d{1,2}))?(?:k([0-4]))?(?:p(\d))?(?:a(\d{1,2}))?((?:[+-][a-z]+)*)((?:\*[a-z]+[0-9a-f]{8})*)$/)
   if (!m) return null
   const layers = {}
-  for (const flag of m[9].match(/[+-][a-z]+/g) ?? []) {
+  for (const flag of m[10].match(/[+-][a-z]+/g) ?? []) {
     const name = flag.slice(1)
     if (!LAYERS.includes(name)) return null
     layers[name] = flag[0] === '+'
   }
   const steps = {}
-  for (const edit of m[10].match(/\*[a-z]+[0-9a-f]{8}/g) ?? []) {
+  for (const edit of m[11].match(/\*[a-z]+[0-9a-f]{8}/g) ?? []) {
     const name = edit.slice(1, -8)
     if (!GRID_LAYERS.includes(name)) return null
     steps[name] = [parseInt(edit.slice(-8, -4), 16), parseInt(edit.slice(-4), 16)]
   }
-  return cleanTrack({ phrase: s.slice(0, at), bpm: m[1], mood: m[2], energy: m[3], dice: m[4], swing: m[5], transpose: m[6], scale: m[7] ?? null, part: m[8] ?? null, layers, steps })
+  return cleanTrack({ phrase: s.slice(0, at), bpm: m[1], mood: m[2], energy: m[3], dice: m[4], swing: m[5], transpose: m[6], scale: m[7] ?? null, part: m[9] ?? (m[8] === undefined ? null : OLD_PARTS[m[8]]), layers, steps })
 }
 
 // ---------- the arrangement: what plays on each of the 128 steps ----------
@@ -297,7 +318,7 @@ export function arrange(input) {
     })
   }
 
-  const ev = { kick: [], bass: [], hats: [], clap: [], perc: [], acid: [], stab: [] }
+  const ev = { kick: [], bass: [], hats: [], clap: [], perc: [], acid: [], stab: [], ride: [], pad: [] }
   for (let bar = 0; bar < BARS; bar++) {
     const last = bar === BARS - 1
     for (let s = 0; s < STEPS; s++) {
@@ -322,11 +343,15 @@ export function arrange(input) {
       // stab: the pattern shifts every other bar so the chords breathe
       const stabPattern = STAB_PATTERNS[(stabSlot + (bar % 2)) % STAB_PATTERNS.length]
       if (stabPattern[s] === 'x') ev.stab.push({ step, notes: chordShape.map((i) => root + 24 + i), vel: 1 })
+      // ride: every 8th, the offbeat ones ring out
+      if (s % 2 === 0) ev.ride.push({ step, vel: s % 4 === 2 ? 1 : 0.55 })
     }
   }
+  // the pad: one long swell over the loop, the root, the fifth and the third above
+  ev.pad.push({ step: 0, notes: [root + 12, root + 12 + scale[4], root + 24 + scale[2]] })
   // your step edits: the same on/off mask in every bar of the loop
   const chord = chordShape.map((i) => root + 24 + i)
-  const fresh = { kick: () => ({ vel: 1 }), hats: () => ({ vel: 0.8, open: false }), bass: () => ({ note: root, vel: 0.9 }), perc: () => ({ vel: 0.85, kind: percKind }), clap: () => ({ vel: 1 }), acid: () => ({ note: root + 24, accent: false, slide: false }), stab: () => ({ notes: chord, vel: 1 }) }
+  const fresh = { kick: () => ({ vel: 1 }), hats: () => ({ vel: 0.8, open: false }), bass: () => ({ note: root, vel: 0.9 }), perc: () => ({ vel: 0.85, kind: percKind }), clap: () => ({ vel: 1 }), acid: () => ({ note: root + 24, accent: false, slide: false }), stab: () => ({ notes: chord, vel: 1 }), ride: () => ({ vel: 0.8 }) }
   for (const [name, [onMask, offMask]] of Object.entries(t.steps)) {
     ev[name] = ev[name].filter((e) => !(offMask & (1 << (e.step % STEPS))))
     for (let bar = 0; bar < BARS; bar++) {
@@ -702,26 +727,110 @@ function stamp(buf, tpl, at, vel, sr) {
   for (let i = 0; i < n; i++) buf[start + i] += tpl[i] * vel
 }
 
-// Renders the 8-bar loop. The reverb and delay tails fold back onto the start,
-// so the loop repeats without a seam.
-export function render(input, { sampleRate = 44100, voices = null } = {}) {
+// The ride: brighter, longer metal than the hats, so a drop opens up on top.
+function renderRide(buf, sr, at, vel, tone, noise) {
+  const start = Math.round(at * sr)
+  const len = Math.min(Math.round(1.4 * sr), buf.length - start)
+  const bp = svf(); bp.set(6800, sr, 0.9)
+  const hp = svf(); hp.set(4200, sr, 0.7)
+  const phases = HAT_FREQS.map(() => 0)
+  for (let i = 0; i < len; i++) {
+    const t = i / sr
+    let metal = 0
+    for (let j = 0; j < 6; j++) {
+      phases[j] += (HAT_FREQS[j] * tone * 3.1) / sr
+      if (phases[j] >= 1) phases[j] -= 1
+      metal += phases[j] < 0.5 ? 1 : -1
+    }
+    const env = Math.min(1, t / 0.001) * (0.35 * Math.exp(-t / 0.02) + 0.65 * Math.exp(-t / 0.42))
+    const x = metal * 0.12 + noise() * 0.5
+    buf[start + i] += (bp.run(x, 1) * 0.9 + hp.run(noise(), 2) * 0.12) * env * vel
+  }
+}
+
+// The pad: one dark swell over the loop, three detuned saws a note through a
+// slow low-pass. It fades in over the first half and out over the last bars,
+// so it breathes once per loop and the loop has no seam.
+function renderPad(buf, sr, len, notes, cutoff, noise) {
+  const osc = []
+  for (const n of notes) for (const d of [-0.09, 0, 0.09]) osc.push({ dt: mtof(n + d) / sr, ph: noise() * 0.5 + 0.5 })
+  const gain = 0.6 / Math.sqrt(osc.length)
+  const lp1 = svf(), lp2 = svf()
+  const smooth = (x) => (x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x))
+  for (let i = 0; i < len && i < buf.length; i++) {
+    const u = i / len
+    let x = 0
+    for (const o of osc) {
+      o.ph += o.dt; if (o.ph >= 1) o.ph -= 1
+      x += 2 * o.ph - 1 - polyblep(o.ph, o.dt)
+    }
+    if ((i & 31) === 0) {
+      const fc = cutoff * (0.6 + 0.9 * Math.sin(Math.PI * u))
+      lp1.set(fc, sr, 0.7); lp2.set(fc, sr, 0.9)
+    }
+    const env = smooth(u / 0.45) * smooth((1 - u) / 0.22)
+    buf[i] += lp2.run(lp1.run(x * gain, 0), 0) * env
+  }
+}
+
+// The riser: noise through a band-pass that climbs over the last four bars of
+// the loop before a drop, louder as it goes.
+function renderRiser(buf, sr, from, len, noise) {
+  const bp = svf()
+  for (let i = 0; i < len && from + i < buf.length; i++) {
+    const u = i / len
+    if ((i & 15) === 0) bp.set(250 * Math.pow(32, u), sr, 2.2)
+    buf[from + i] += bp.run(noise(), 1) * u * u * 1.1
+  }
+}
+
+// The crash on the first beat of a drop.
+function renderCrash(buf, sr, at, noise) {
+  const start = Math.round(at * sr)
+  const len = Math.min(Math.round(2.2 * sr), buf.length - start)
+  const hp = svf(); hp.set(3800, sr, 0.7)
+  const phases = HAT_FREQS.map(() => 0)
+  for (let i = 0; i < len; i++) {
+    const t = i / sr
+    let metal = 0
+    for (let j = 0; j < 6; j++) {
+      phases[j] += (HAT_FREQS[j] * 4.3) / sr
+      if (phases[j] >= 1) phases[j] -= 1
+      metal += phases[j] < 0.5 ? 1 : -1
+    }
+    buf[start + i] += hp.run(noise() * 0.8 + metal * 0.06, 2) * Math.min(1, t / 0.002) * Math.exp(-t / 0.7)
+  }
+}
+
+// The level into the master's soft clip. Fixed, so a breakdown is quieter
+// than a drop, as in a real set (it was a per-loop peak before 0.8).
+const MASTER_GAIN = 0.65
+const TAIL_SECONDS = 2.5
+
+// The whole loop before the master: every bus mixed to stereo, with the
+// tail (reverb, delay, the last hits) after the loop still separate.
+// opts.rise: a riser over the last four bars and no kick in the last bar.
+// opts.impact: a crash on the first beat.
+export function mixdown(input, { sampleRate = 44100, voices = null, rise = false, impact = false } = {}) {
   const a = arrange(input)
   const t = a.track
   const sr = sampleRate
   const loop = Math.round(a.steps * a.stepSeconds * sr)
-  const total = loop + Math.round(2.5 * sr)
+  const total = loop + Math.round(TAIL_SECONDS * sr)
   const noise = noiseSource(hash32('noise:' + t.phrase + ':' + t.dice))
   const r = rng(hash32('sound:' + t.phrase))
   const stepAt = (step, swingable) => step * a.stepSeconds + (swingable && step % 2 === 1 ? t.swing * 0.045 * a.stepSeconds : 0)
   const bus = () => new Float32Array(total)
-  const kick = bus(), bass = bus(), hats = bus(), clap = bus(), perc = bus(), acid = bus(), stab = bus(), voice = bus()
+  const kick = bus(), bass = bus(), hats = bus(), clap = bus(), perc = bus(), acid = bus(), stab = bus(), voice = bus(), ride = bus(), pad = bus(), fx = bus()
+  const lastBar = (BARS - 1) * STEPS
+  const kicks = rise ? a.events.kick.filter((e) => e.step < lastBar) : a.events.kick
 
   // the kick's tail sits on the key's root, so kick and sub are one note
   let tail = mtof(a.root)
   while (tail >= 56) tail /= 2
   const k = { f0: 140 + r() * 40, f1: tail, pitchDecay: 0.04 + r() * 0.015, ampDecay: 0.24 + r() * 0.06, drive: 1.9 + t.energy * 0.3 }
   const kickHit = template(sr, 0.55, (b) => renderKick(b, sr, 0, 1, k, noise))
-  for (const e of a.events.kick) stamp(kick, kickHit, stepAt(e.step, false), e.vel, sr)
+  for (const e of kicks) stamp(kick, kickHit, stepAt(e.step, false), e.vel, sr)
 
   const bassCut = 160 + t.mood * 70 + t.energy * 45
   const bassGrit = 0.8 + 0.1 * t.energy - 0.1 * Math.min(t.mood, 2)
@@ -739,27 +848,38 @@ export function render(input, { sampleRate = 44100, voices = null } = {}) {
   for (const e of a.events.hats) stamp(hats, e.open ? openHat : closedHats[e.step % 2], stepAt(e.step, true), e.vel, sr)
   const clapHit = template(sr, 0.35, (b) => renderClap(b, sr, 0, 1, noise))
   for (const e of a.events.clap) stamp(clap, clapHit, stepAt(e.step, false), e.vel, sr)
+  // a clap roll into the drop
+  if (rise && a.on.clap) for (let s = 8; s < STEPS; s++) stamp(clap, clapHit, stepAt(lastBar + s, false), 0.25 + 0.06 * (s - 8), sr)
   const percPitch = 140 + r() * 120
   const percHit = template(sr, 0.3, (b) => renderPerc(b, sr, 0, 1, a.percKind, percPitch, noise))
   for (const e of a.events.perc) stamp(perc, percHit, stepAt(e.step, true), e.vel, sr)
+  if (a.events.ride.length) {
+    const rideHit = template(sr, 1.4, (b) => renderRide(b, sr, 0, 1, hatTone, noise))
+    for (const e of a.events.ride) stamp(ride, rideHit, stepAt(e.step, true), e.vel, sr)
+  }
 
   const loopSeconds = loop / sr
-  const sweepBase = 260 + t.mood * 120
-  const sweepDepth = 1.6 + t.energy * 0.9
-  renderAcid(acid, sr, a, total, (i) => sweepBase * (1 + sweepDepth * (0.5 - 0.5 * Math.cos((TAU * (i / sr)) / loopSeconds))))
+  if (a.events.acid.length) {
+    const sweepBase = 260 + t.mood * 120
+    const sweepDepth = 1.6 + t.energy * 0.9
+    renderAcid(acid, sr, a, total, (i) => sweepBase * (1 + sweepDepth * (0.5 - 0.5 * Math.cos((TAU * (i / sr)) / loopSeconds))))
+  }
 
   const stabCut = 450 + t.mood * 280 + t.energy * 120
   for (const e of a.events.stab) renderStab(stab, sr, stepAt(e.step, false), e.notes, e.vel, stabCut, noise)
+  for (const e of a.events.pad) renderPad(pad, sr, loop, e.notes, 380 + t.mood * 90, noise)
 
-  // the voice says the name once a loop: deep on the drop's first bar, a whisper in bar 3
-  // (inside the first 4 bars, which the set replay plays of each part)
+  if (rise) renderRiser(fx, sr, Math.round(4 * STEPS * a.stepSeconds * sr), loop - Math.round(4 * STEPS * a.stepSeconds * sr), noise)
+  if (impact) renderCrash(fx, sr, 0, noise)
+
+  // the voice says the name once a loop: deep on a drop's first bar, a whisper in bar 3
   const drop = t.part !== null && t.part !== undefined && PLAN[t.part].section === 'drop'
   const clip = a.on.voice && voices ? (drop ? voices.deep : voices.whisper) : null
   if (clip) renderVoice(voice, sr, (drop ? 0 : 2 * STEPS) * a.stepSeconds, clip, drop ? 0.79 : 0.84, drop ? 0.75 : 0.85)
 
   // sidechain: everything but the kick ducks under each kick
   const duck = new Float32Array(total).fill(1)
-  for (const e of a.events.kick) {
+  for (const e of kicks) {
     const s0 = Math.round(stepAt(e.step, false) * sr)
     for (let i = 0; i < Math.round(0.3 * sr) && s0 + i < total; i++) {
       const tt = i / sr
@@ -771,7 +891,7 @@ export function render(input, { sampleRate = 44100, voices = null } = {}) {
   // sends
   const revIn = bus(), dlyIn = bus()
   for (let i = 0; i < total; i++) {
-    revIn[i] = clap[i] * 0.6 + perc[i] * 0.35 + stab[i] * 0.35 + hats[i] * 0.12 + acid[i] * 0.12 + voice[i] * 0.55
+    revIn[i] = clap[i] * 0.6 + perc[i] * 0.35 + stab[i] * 0.35 + hats[i] * 0.12 + acid[i] * 0.12 + voice[i] * 0.55 + ride[i] * 0.15 + pad[i] * 0.5 + fx[i] * 0.6
     dlyIn[i] = stab[i] * 0.7 + acid[i] * 0.18 + perc[i] * 0.15 + voice[i] * 0.6
   }
   const room = 0.8 + (t.mood <= 1 ? 0.06 : 0)
@@ -791,40 +911,60 @@ export function render(input, { sampleRate = 44100, voices = null } = {}) {
     }
   }
 
-  const levels = { kick: 0.9, bass: 1.05, hats: 0.4, clap: 0.7, perc: 0.22, acid: 0.45, stab: 0.75 }
+  const levels = { kick: 0.9, bass: 1.05, hats: 0.4, clap: 0.7, perc: 0.22, acid: 0.45, stab: 0.75, ride: 0.16, pad: 1.2, fx: 0.32 }
   const left = new Float32Array(total), right = new Float32Array(total)
   for (let i = 0; i < total; i++) {
     const d = duck[i]
-    const center = kick[i] * levels.kick + (bass[i] * levels.bass + clap[i] * levels.clap + acid[i] * levels.acid) * d + voice[i] * 0.8 * Math.sqrt(d) + (rumL ? rumL[i] * 1.35 * (d * d) : 0)
-    const h = hats[i] * levels.hats, p = perc[i] * levels.perc, s = stab[i] * levels.stab * d
-    left[i] = center + h * 0.8 + p * 1.15 + s + (revL[i] * 0.9 + dlyL[i] * 0.45) * d
-    right[i] = center + h * 1.15 + p * 0.8 + s + (revR[i] * 0.9 + dlyR[i] * 0.45) * d
+    const center = kick[i] * levels.kick + (bass[i] * levels.bass + clap[i] * levels.clap + acid[i] * levels.acid) * d + voice[i] * 0.8 * Math.sqrt(d) + (rumL ? rumL[i] * 1.35 * (d * d) : 0) + fx[i] * levels.fx
+    const h = hats[i] * levels.hats, p = perc[i] * levels.perc, s = stab[i] * levels.stab * d, rd = ride[i] * levels.ride * Math.sqrt(d), pd = pad[i] * levels.pad * d
+    left[i] = center + h * 0.8 + p * 1.15 + s + rd * 1.2 + pd + (revL[i] * 0.9 + dlyL[i] * 0.45) * d
+    right[i] = center + h * 1.15 + p * 0.8 + s + rd * 0.8 + pd + (revR[i] * 0.9 + dlyR[i] * 0.45) * d
   }
+  return { left, right, loop, total, sampleRate: sr, seconds: loopSeconds, stepSeconds: a.stepSeconds }
+}
 
-  // fold the tail onto the start, cut to the loop, then master
-  const outL = left.slice(0, loop), outR = right.slice(0, loop)
-  for (let i = 0; i < total - loop && i < loop; i++) { outL[i] += left[loop + i]; outR[i] += right[loop + i] }
-  // high-pass at 25 Hz, bring the peak to 1.25 so the soft clip only rounds
-  // the kick's tip, then set the final peak at -1 dBFS
-  // and a gentle 12 kHz low-pass, which takes the digital edge off the top
-  let hpL = 0, hpR = 0, lpL = 0, lpR = 0, peak = 0
-  const hpG = 1 - Math.exp((-TAU * 25) / sr)
-  const lpG = 1 - Math.exp((-TAU * 12000) / sr)
-  for (let i = 0; i < loop; i++) {
-    hpL += hpG * (outL[i] - hpL); hpR += hpG * (outR[i] - hpR)
-    lpL += lpG * (outL[i] - hpL - lpL); lpR += lpG * (outR[i] - hpR - lpR)
-    outL[i] = lpL; outR[i] = lpR
-    peak = Math.max(peak, Math.abs(outL[i]), Math.abs(outR[i]))
+// The master, in place on n samples: high-pass at 25 Hz, a gentle 12 kHz
+// low-pass that takes the digital edge off, a fixed gain into a soft clip
+// that only rounds the kick's tip, then -1 dBFS at most.
+function master(left, right, n) {
+  let hpL = 0, hpR = 0, lpL = 0, lpR = 0
+  const hpG = 1 - Math.exp((-TAU * 25) / 44100)
+  const lpG = 1 - Math.exp((-TAU * 12000) / 44100)
+  for (let i = 0; i < n; i++) {
+    hpL += hpG * (left[i] - hpL); hpR += hpG * (right[i] - hpR)
+    lpL += lpG * (left[i] - hpL - lpL); lpR += lpG * (right[i] - hpR - lpR)
+    left[i] = soft(lpL * MASTER_GAIN) * 0.89
+    right[i] = soft(lpR * MASTER_GAIN) * 0.89
   }
-  const pre = peak > 0 ? 1.25 / peak : 1
-  peak = 0
-  for (let i = 0; i < loop; i++) {
-    outL[i] = soft(outL[i] * pre); outR[i] = soft(outR[i] * pre)
-    peak = Math.max(peak, Math.abs(outL[i]), Math.abs(outR[i]))
+}
+
+// Renders the 8-bar loop. The reverb and delay tails fold back onto the start,
+// so the loop repeats without a seam.
+export function render(input, opts = {}) {
+  const m = mixdown(input, opts)
+  const outL = m.left.slice(0, m.loop), outR = m.right.slice(0, m.loop)
+  for (let i = 0; i < m.total - m.loop && i < m.loop; i++) { outL[i] += m.left[m.loop + i]; outR[i] += m.right[m.loop + i] }
+  master(outL, outR, m.loop)
+  return { left: outL, right: outR, sampleRate: m.sampleRate, seconds: m.seconds, stepSeconds: m.stepSeconds }
+}
+
+// One loop for a stream: no fold. `left` and `right` run past the loop by the
+// tail, which the player adds onto whatever plays next.
+// opts.with: a second track mixed in at the same tempo (the handover).
+export function renderLoop(input, opts = {}) {
+  const m = mixdown(input, opts)
+  if (opts.with) {
+    const o = mixdown({ ...opts.with, bpm: cleanTrack(input).bpm }, { ...opts, rise: false, impact: false, with: null })
+    for (let i = 0; i < m.total && i < o.total; i++) { m.left[i] += o.left[i]; m.right[i] += o.right[i] }
   }
-  const norm = peak > 0 ? 0.89 / peak : 1
-  for (let i = 0; i < loop; i++) { outL[i] *= norm; outR[i] *= norm }
-  return { left: outL, right: outR, sampleRate: sr, seconds: loopSeconds, stepSeconds: a.stepSeconds }
+  master(m.left, m.right, m.total)
+  return { left: m.left, right: m.right, loop: m.loop, sampleRate: m.sampleRate, seconds: m.seconds, stepSeconds: m.stepSeconds }
+}
+
+// A track with only these layers on, at a part of the build: for the handover.
+export function onlyLayers(input, names) {
+  const t = cleanTrack(input)
+  return { ...t, layers: Object.fromEntries(LAYERS.map((n) => [n, names.includes(n)])) }
 }
 
 // The whole build as one clip: the first 4 bars of each part in order, then

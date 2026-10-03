@@ -1,10 +1,12 @@
 # techno (Claude Code mod)
 
-A Claude Code mod. A phrase grows an 8-bar techno loop. The riff plays the
-phrase's letters. NEXT builds the track one part at a time, from the kick
-alone to the outro; then you replay the whole set, save it as an mp3, remix
-it or share it. You can also change the track by talking to Claude, who calls
-the `jam` tool. You share it with a `/techno <code>` line or an mp3.
+A Claude Code mod. A phrase grows a techno track: a long set of about seven
+minutes (intro, groove, build, three drops with breakdowns between them, an
+outro) that mixes by itself into the next track, layer by layer. One
+background player makes the music for every chat; the band above the chat box
+is a remote control, and so are the Mac's play, next and previous keys. You
+keep tracks you love in favorites, and Claude changes the music from chat with
+the `jam` tool.
 
 Needs Claude Code v2.1.287 or later (built and checked on v2.1.288).
 
@@ -15,17 +17,69 @@ Needs Claude Code v2.1.287 or later (built and checked on v2.1.288).
 | `.claude-plugin/plugin.json` | Plugin manifest. Name `techno`. |
 | `.claude-plugin/marketplace.json` | Local marketplace `techno-mod`, so the plugin installs as `techno@techno-mod`. |
 | `hooks/hooks.json` | Points to the hooks module. |
-| `hooks/register.js` | The mod: state, `/techno` command, `jam` tool, audio, save, share, click handlers. Every `$` call lives here (the validator refuses `$` passed to imported files). |
-| `hooks/views.js` | The app's screens as pure functions of `(ui, vm, act)`: the crate, the deck, the done card, and the bar shown while the app is hidden. |
-| `hooks/coach.js` | The coach: play first, then the NEXT button for the next part of `PLAN`, then the done card. Its `key` names the button drawn as `variant: 'primary'`. |
-| `hooks/grid.client.js` | A `Client` surface module: the step sequencer with its own playhead clock. Every step is a fixed-width `Box` with a background, so columns line up in any font. A click on a row name posts `{ toggle: layer }` (mute); a click on a cell posts `{ step, layer }` (add or remove that hit in every bar). |
-| `hooks/engine.js` | The synth, `PLAN` (the build), `toggleStep`, `renderSet`. Plain JS with no Node or browser APIs, so it also runs in node and in a page (a future web player). |
-| `scripts/render.mjs` | Render a phrase or code to a WAV from the shell: `node scripts/render.mjs "phrase" out.wav [repeats]`. |
-| `scripts/smoke.mjs` | Runs `register.js` in node against a fake `$`. Fast check without a session. |
-| `tests/techno.test.ts` | Real tests for `claude plugin test`. |
-| `previews/v0.3/` | The old sound, the new sound on the same loop, and two full builds as mp3 (gitignored, local only). |
+| `hooks/register.js` | The chat side: a remote control for the player. Starts the player when none (or an older one) answers, polls its state every second, `/techno` command, `jam` tool, save and share. Every `$` call lives here (the validator refuses `$` passed to imported files). |
+| `hooks/views.js` | The app's screens as pure functions of `(ui, vm, act)`: the deck (layout A), favorites (with the tracks heard before), new track, and the bar shown while the app is hidden. |
+| `hooks/grid.client.js` | A `Client` surface module: the step sequencer with its own playhead clock. Colors of empty cells and the playhead are theme keys (`subtle`, `text`), so it reads in light and dark. A click on a row name posts `{ toggle: layer }`; a click on a cell posts `{ step, layer }`. |
+| `hooks/engine.js` | The synth, `PLAN` (the set), `HANDOVER`, `render` (a folded loop, for mp3s), `renderLoop` (a loop with its tail, for the stream, optionally mixed with a second track). Plain JS with no Node or browser APIs. |
+| `hooks/conductor.js` | Pure: what each loop of a set plays (`loopSpec`), how auto moves on (`afterLoop`, `stepOn`), and the `mixer` that cuts loops into bars and carries the tails. Shared by the player and the scripts. |
+| `player/techno.mjs` | The background player (node). Owns the set, auto, favorites, history and undo; renders a loop ahead and feeds bars to the helper; answers chats on a Unix socket (`GET /state`, `POST /cmd`). |
+| `player/TechnoPlayer.swift` | The helper app: plays the bars gaplessly (AVAudioSourceNode), shows "Now Playing" in Control Center, passes the media keys back. The player compiles it with `swiftc` into `~/Library/Caches/techno/TechnoPlayer.app` when the source changes. |
+| `scripts/set.mjs` | Render a whole auto set with the handover to a WAV: `node scripts/set.mjs "ship it" "warehouse 4am" out.wav`. |
+| `scripts/render.mjs` | Render one loop to a WAV: `node scripts/render.mjs "phrase" out.wav [repeats]`. |
+| `scripts/smoke.mjs` | Fast node checks: version match, every part renders, the handover renders. |
+| `tests/techno.test.ts` | Real tests for `claude plugin test`, against a fake player on the socket. |
 
 ## Decisions
+
+### 0.8 (Ruslan, 2026-10-03), these win over older notes below
+
+- **A long set with ups and downs** ("the track shouldn't be 1:20 ... a few
+  drops"). `PLAN` has 11 parts with `loops` for auto: kick, + deep bass,
+  + hats, + rumble, + percussion (riser), drop 1 (+ clap), breakdown (pad,
+  riser), drop 2 (+ ride), breakdown 2 (pad, whisper, riser), drop 3 (+ the
+  deep voice), outro. About 6:50 a track, then 1:45 of handover. A riser and a
+  clap roll lead into each drop (`rise`, auto only); a crash opens each drop.
+- **No stabs** ("they make the track less serious"). The dub chord is out of
+  the plan and out of the old full-track default. A ride (drops 2 and 3) and a
+  dark pad (breakdowns, one swell per loop) take its place. `stab` still
+  exists for old codes and Claude.
+- **Handover A** (picked from three drawn options). After the outro the old
+  track takes one layer out per step while the new one brings one in, then
+  the whole low end swaps at once (`HANDOVER`, 3 steps of 2 loops). The new
+  track goes on from its build (`HANDOVER_TO` = 4), at the old tempo. Nothing
+  resets to 1/10.
+- **Player architecture A** ("I hear auto playing somewhere but I cannot find
+  it ... stop with a play button on my mac keyboard"). One node process owns
+  the music; chats only ask and command. Two chats can no longer start two
+  players. TechnoPlayer.app shows the track in Control Center and takes the
+  play/pause, next and previous keys (next: the next part with auto off, the
+  next track with auto on). It quits when no Claude Code process is left.
+  A chat with a newer version replaces an older player (state is kept).
+- **No pause before a change** ("right before the next thing ... a little
+  delay"). The player streams bars, not 15 s loops: it renders the next loop
+  at bar 4 of the current one, keeps two bars queued, and an edit drops the
+  queued bars and lands on the next bar.
+- **The deck, layout A** (must-haves from Ruslan: play/stop, the track and its
+  mood, auto, next when auto is off, mood, the grid stays "it makes the app
+  alive", edit as a separate button, favorites, previous track). Top: play,
+  name · mood, ⏮ previous, ♡, auto, hide. Then the part and what is next (a
+  countdown with auto). Grid. Under it: mood sad/mysterious/dark, next part ›
+  (auto off only), edit, ♥ favorites n. Edit opens: new rhythm, melody (the
+  acid riff), tempo −/+, undo, share mp3. "auto", not "build by itself".
+  Mockups A, B, C were drawn; A is built until Ruslan picks.
+- **Selected = a filled primary button** ("in light theme I cannot see what's
+  selected"). Never dim against normal text for on/off.
+- **Favorites and previous** ("save it to my favorites ... play them one
+  after another or see/share them", "go to previous track ... it was a
+  banger"). ♡ keeps the track (identity code, no part). The favorites screen
+  plays one, plays them in turn (auto picks from favorites), copies a line,
+  removes; under it "heard before" lists the last tracks with ♡ keep. ⏮ jumps
+  back to the last track heard, at its build. The kept list of 0.7 moves into
+  favorites on the first 0.8 chat (`hello`).
+- **Fixed master level**. The master no longer normalizes each loop, so a
+  breakdown sits about 6 dB under a drop. `MASTER_GAIN` in engine.js.
+
+### Before 0.8
 
 - **Direction C, "Co-producer", plus the dice key from A** (Ruslan, 2026-10-03).
   Seeds: A `dDPD87C1foVGqfO`, B `95m1Yb3BvWQT8m6`, C `yF7R6DOHFF5qhGZ`.
@@ -141,32 +195,40 @@ Needs Claude Code v2.1.287 or later (built and checked on v2.1.288).
 
 ## Share code format
 
-`<phrase-with-hyphens>@<bpm>m<mood>e<energy>[d<dice>][s<swing>][t<transpose>][k<scale>][p<part>][+layer|-layer...][*<layer><on hex4><off hex4>...]`
+`<phrase-with-hyphens>@<bpm>m<mood>e<energy>[d<dice>][s<swing>][t<transpose>][k<scale>][p<old part>|a<part>][+layer|-layer...][*<layer><on hex4><off hex4>...]`
 
-Example: `late-night-deploy@131m1e2d3p4+acid-hats*kick00040000`. `k` is a picked
-scale (0..4, see `SCALES`); without it the mood picks. `p` is the part of
-the build (0..9); without it the track is the old full track, where mood and
-energy decide the layers. `*` is a step edit: a 16-bit mask of steps forced on
+Example: `late-night-deploy@131m1e2d3a4+acid-hats*kick00040000`. `k` is a picked
+scale (0..4, see `SCALES`); without it the mood picks. `a` is the part of
+the set (0..10, 0.8 on); `p` (0..9) is a part of the old ten-part build, and
+`OLD_PARTS` moves it to the same section. Without either, the track is the old
+full track, where mood and energy decide the layers. `*` is a step edit: a 16-bit mask of steps forced on
 and one forced off, the same in every bar (grid layers only, not rumble). Layers: kick, bass, hats,
-clap, perc, acid, stab, rumble. A `+`/`-` flag forces a layer; without one,
+clap, perc, acid, stab, rumble, voice, ride, pad. A `+`/`-` flag forces a layer; without one,
 mood and energy decide. `parseCode` and `encodeCode` in `engine.js` own it.
 Do not change the meaning of an existing field: old codes must keep playing the same track.
 
 ## Engine notes
 
-- 8 bars, 44.1 kHz stereo, about 15 s. Renders in about 0.3 s in node; a full
-  set (`renderSet`, about 80 s of audio) in about 2 s. Each
+- 8 bars, 44.1 kHz stereo, about 15 s. Renders in about 0.3 s in node (a
+  handover loop, two tracks, about 0.6 s). Each
   drum hit renders once per track (`template` + `stamp`); keep it that way,
   since every click re-renders.
-- Reverb and delay tails fold back onto the start, so the loop has no seam.
+- `render` folds the reverb and delay tails back onto the start (a loop file
+  with no seam). `renderLoop` keeps the tail; the `mixer` adds it onto the
+  next bars, with a soft knee over 0.9.
 - `toWav(audio, startSeconds)` rotates the loop. The mod uses it to keep the
   beat when a change lands mid-loop.
-- Master: high-pass 25 Hz, peak to 1.25, soft clip, peak at -1 dBFS. About -10
-  to -11 LUFS. The mod plays at gain 0.7.
+- Master: high-pass 25 Hz, 12 kHz low-pass, fixed gain into a soft clip, at
+  most -1 dBFS. Drops about -10 dB RMS, breakdowns about -15. The helper plays
+  at gain 0.7.
 
 ## Checks
 
-- `node scripts/smoke.mjs`: logic, without a session.
+- `node scripts/smoke.mjs`: version, every part and the handover render.
+- Listen to a whole set: `node scripts/set.mjs "ship it" "warehouse 4am" /tmp/set.wav`.
+- Run the player without sound and away from the real state:
+  `TECHNO_DIR=/tmp/tt TECHNO_GAIN=0 node player/techno.mjs`, then
+  `curl --unix-socket /tmp/tt/cache/techno.sock -X POST localhost/cmd -d '{"op":"play"}'`.
 - `claude plugin validate .` and `claude plugin test`: the real checks. A test
   that presses NEXT many times needs `{ timeoutMs: 30000 }`: each part renders.
 - Listen: `node scripts/render.mjs "phrase" /tmp/x.wav 2 && afplay /tmp/x.wav`.
@@ -194,5 +256,13 @@ Do not change the meaning of an existing field: old codes must keep playing the 
   `scripts/smoke.mjs`), so a stale chat shows itself. Test a new version in a
   NEW chat. The background player logs every start, stop and its cause to
   `~/Library/Caches/techno/player.log`.
+- **The player's files**: socket `~/Library/Caches/techno/techno.sock`, log
+  `~/Library/Caches/techno/player.log` (and `daemon.out` for crashes), the
+  helper app beside them, the state (favorites, history, auto, the track) in
+  `~/Library/Application Support/techno/state.json`.
+- Chats still on 0.7 run their own ffplay player. The 0.8 player kills those
+  at its start, but a 0.7 chat on auto starts them again: close old chats.
+- macOS gives the media keys to the app that played last: after Spotify or
+  Music, press play in the pane once.
 - `$.fs.write` writes text only. `save()` pipes base64 through
   `base64 --decode` with `$.process.run` stdin to write the WAV.

@@ -6,18 +6,21 @@
 // posts { step: i, layer } (add or remove that hit in every bar).
 //
 // props: { rows: [[name, pattern, color, isOn, isMuted, isNext]], step, stepMs, playing, stamp }
+// stamp is when the current bar started; a new stamp resyncs the playhead.
 // A layer the build has not brought in (or took out) is dim; one you muted is struck through.
 // The next sound of the build is a dashed row: where it will play, not yet clickable.
 const LABEL = 8
 const TOP = 2 // the header line and the beat ruler
 const cellX = (i) => LABEL + i * 3 + Math.floor(i / 4)
 
-const REST = '#3a3a3a'
-const REST_BEAT = '#4a4a4a'
-const MUTED = '#5c5c5c'
-const HEAD_REST = '#777777'
-const HEAD_HIT = '#ffffff'
-const HOVER = '#9a9a9a'
+// Theme keys, not raw colors, so the grid reads in the light and the dark
+// theme alike: an empty step is the theme's subtle grey, the playhead its text color.
+const REST = 'subtle'
+const REST_BEAT = 'subtle'
+const MUTED = 'inactive'
+const HEAD_REST = 'suggestion'
+const HEAD_HIT = 'text'
+const HOVER = 'inactive'
 
 function cellAt(x) {
   for (let i = 0; i < 16; i++) if (x >= cellX(i) && x <= cellX(i) + 2) return i
@@ -73,8 +76,7 @@ export default function Grid(props, surface) {
     key: 'gh',
     flexDirection: 'row',
     children: [
-      Text({ bold: props.playing, dimColor: !props.playing, children: [props.playing ? `bar ${bar}/8  ` : 'stopped  '] }),
-      Text({ dimColor: true, children: ['click a name to mute it · click a cell to add or remove a hit'] }),
+      Text({ dimColor: true, children: [props.playing ? `bar ${bar}/8` : 'stopped'] }),
     ],
   })
   const ruler = Box({

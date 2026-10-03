@@ -6,7 +6,7 @@
 // /techno              open the app
 // /techno <phrase>     a new track from the phrase (or from a share code)
 // /techno stop | save | code
-import { trackFor, atPart, cleanTrack, parseCode, encodeCode, describe, keyName, render, renderSet, toWav, grid, toggleStep, activeLayers, LAYERS, GRID_LAYERS, PLAN, MOODS, ENERGIES, BPM_MIN, BPM_MAX } from './engine.js'
+import { normalizePhrase, trackFor, atPart, cleanTrack, parseCode, encodeCode, describe, keyName, render, renderSet, toWav, grid, toggleStep, activeLayers, LAYERS, GRID_LAYERS, PLAN, MOODS, ENERGIES, BPM_MIN, BPM_MAX } from './engine.js'
 import { nextMove } from './coach.js'
 import { appView, miniView } from './views.js'
 
@@ -44,6 +44,13 @@ const s = {
   set: new Map(),
   seen: new Set(),
   finished: false,
+  // auto: NEXT presses itself at the end of each loop, then moves to the next track
+  auto: false,
+  autoTimer: null,
+  autoLoops: 0,
+  // the bar above the chat box while the app is hidden: shown once you used techno, until its ×
+  used: false,
+  barClosed: false,
   lastPrompt: '',
   you: '',
   said: '',
@@ -55,6 +62,9 @@ const shareLine = (t) => '/techno ' + encodeCode(t)
 const startOf = (phrase) => atPart(trackFor(phrase), 0)
 const item = (label, sub, track = startOf(label)) => ({ label, sub, code: encodeCode(track) })
 const isBuilding = (t) => t && t.part !== null && t.part !== undefined
+// How many loops auto plays a part for: the peak and the drop get two.
+const AUTO_LOOPS = { peak: 2, drop: 2 }
+const loopsFor = (t) => (isBuilding(t) ? AUTO_LOOPS[PLAN[t.part].section] ?? 1 : 2)
 
 function gridFor(t) {
   const key = encodeCode(t)
@@ -117,6 +127,7 @@ async function startAudio($) {
       $.ui.invalidate('ui.render')
     })
   if (old) old.abort()
+  await scheduleAuto($)
   $.ui.invalidate('ui.render')
 }
 
@@ -125,7 +136,66 @@ function stopAudio($) {
   s.ctrl = null
   s.playing = false
   s.replaying = false
+  cancelAuto()
   $.ui.invalidate('ui.render')
+}
+
+// ---------- auto ----------
+
+function cancelAuto() {
+  if (s.autoTimer) s.autoTimer.cancel()
+  s.autoTimer = null
+}
+
+// Wakes at the next loop boundary, so every change lands on the one.
+async function scheduleAuto($) {
+  cancelAuto()
+  if (!s.auto || !s.playing || s.replaying || !s.loopMs) return
+  const now = await $.clock.now()
+  const pos = (((now - s.startedAt) % s.loopMs) + s.loopMs) % s.loopMs
+  let wait = s.loopMs - pos
+  if (wait < 250) wait += s.loopMs
+  s.autoTimer = $.clock.after(wait, () => { autoTick($).catch(() => {}) })
+}
+
+async function autoTick($) {
+  s.autoTimer = null
+  if (!s.auto || !s.playing || s.replaying || !s.track) return
+  s.autoLoops++
+  if (s.autoLoops < loopsFor(s.track)) return scheduleAuto($)
+  s.autoLoops = 0
+  const t = s.track
+  if (s.finished || !isBuilding(t) || t.part === PLAN.length - 1) {
+    if (isBuilding(t)) s.set.set(t.part, t)
+    return nextTrack($)
+  }
+  await advance($)
+  s.said = 'auto · ' + s.said
+}
+
+async function setAuto($, on) {
+  s.auto = on
+  s.autoLoops = 0
+  if (on && !s.playing) await startAudio($)
+  else if (on) await scheduleAuto($)
+  else cancelAuto()
+  $.ui.invalidate('ui.render')
+}
+
+const normalizeLabel = (label) => normalizePhrase(label) || 'techno'
+
+// The next name in your list (this project, kept, starters), built from the
+// kick. In auto it keeps the tempo, so the beat carries straight on.
+async function nextTrack($) {
+  const list = [...s.repo, ...s.saved, ...STARTERS.map((p) => item(p, ''))].filter((it, i, all) => all.findIndex((x) => x.label === it.label) === i)
+  if (!list.length) return
+  const i = list.findIndex((it) => s.track && normalizeLabel(it.label) === s.track.phrase)
+  const nxt = list[(i + 1) % list.length]
+  let t = parseCode(nxt.code) ?? startOf(nxt.label)
+  if (!isBuilding(t)) t = atPart(t, 0)
+  if (s.auto && s.track) t = { ...t, bpm: s.track.bpm }
+  await pick($, encodeCode(cleanTrack(t)))
+  s.said = (s.auto ? 'auto · ' : '') + 'next track: ' + t.phrase
 }
 
 // The tracks of the finished set, in build order.
@@ -176,6 +246,8 @@ async function setTrack($, next, { play } = {}) {
   const clean = cleanTrack(next)
   if (s.track && encodeCode(s.track) === encodeCode(clean)) return clean
   if (!s.track || s.track.phrase !== clean.phrase) freshSet()
+  if (!s.track || s.track.phrase !== clean.phrase || s.track.part !== clean.part) s.autoLoops = 0
+  s.used = true
   if (s.track) s.history = [...s.history.slice(-29), s.track]
   s.track = clean
   s.status = ''
@@ -291,12 +363,15 @@ async function copyShare($) {
     } catch { /* no clipboard */ }
   }
   s.status = ok ? 'play line copied. Paste it to a friend who has the mod.' : 'copy the play line above'
+  if (!s.isOpen) $.ui.toast(ok ? 'Play line copied: ' + shareLine(s.track) : shareLine(s.track))
   $.ui.invalidate('ui.render')
 }
 
 // The app lives in the band above the chat box; these show and hide it.
 function openApp($) {
   s.isOpen = true
+  s.used = true
+  s.barClosed = false
   $.ui.invalidate('ui.render')
 }
 
@@ -418,6 +493,7 @@ export function register(on) {
             additionalProperties: false,
           },
           play: { type: 'boolean', description: 'true starts the loop, false stops it' },
+          auto: { type: 'boolean', description: 'true lets the mod build and mix by itself (a part per loop, then the next track); false stops that' },
           note: { type: 'string', description: 'A few words for the pane, like "darker, acid on"' },
         },
       },
@@ -440,6 +516,11 @@ export function register(on) {
   })
 
   on('tool.call', { tool: TOOL }, async ($, e) => {
+    if (typeof e.auto === 'boolean' && s.track) await setAuto($, e.auto)
+    if (e.auto !== undefined && Object.keys(e).every((k) => ['tool', 'tool_use_id', 'auto', 'note', 'agentId'].includes(k))) {
+      s.said = e.note ? String(e.note).slice(0, 80) : 'auto ' + (s.auto ? 'on' : 'off')
+      return { result: `Auto is ${s.auto ? 'on: the mod builds a part per loop, then mixes into the next track' : 'off'}. Now playing: "${s.track?.phrase ?? 'nothing'}".` }
+    }
     if (e.next && s.track && !e.phrase) {
       const from = s.track
       await advance($)
@@ -482,11 +563,13 @@ export function register(on) {
   // The app, drawn in the band above the chat box. Hidden: a one-line player
   // while music plays, otherwise nothing.
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
-    if (!s.isOpen && !(s.playing && s.track)) return next(e)
+    if (!s.isOpen && !(s.track && s.used && !s.barClosed)) return next(e)
     const ui = $.ui.resolve(e)
     const t = s.track
     const now = await $.clock.now()
-    const move = nextMove(t, { playing: s.playing && !s.replaying, finished: s.finished })
+    const coach = nextMove(t, { playing: s.playing && !s.replaying, finished: s.finished })
+    // in auto the mod presses NEXT itself, so nothing else is lit and the tip says when
+    const move = s.auto && s.playing && coach.key === 'do-move' ? { ...coach, key: 'auto', tip: coach.tip + ' Auto moves on at the end of the loop.' } : coach
     const code = t ? encodeCode(t) : ''
     const layersOn = t ? activeLayers(t) : {}
     const looping = s.playing && !s.replaying && s.loopMs
@@ -504,6 +587,7 @@ export function register(on) {
       key: t ? keyName(t) : '',
       playing: s.playing,
       replaying: s.replaying,
+      auto: s.auto,
       finished: s.finished,
       set: { parts: s.set.size, length: setLength() },
       move,
@@ -535,9 +619,12 @@ export function register(on) {
       pick: (c) => pick($, c),
       phrase: (text) => (String(text).trim() ? pick($, text) : undefined),
       screen: (id) => { s.screen = id; redraw() },
-      doMove: () => doMove($, move.id),
+      doMove: () => { s.autoLoops = 0; return doMove($, move.id) },
       open: () => openApp($),
       close: () => hideApp($),
+      auto: () => setAuto($, !s.auto),
+      nextTrack: () => nextTrack($),
+      closeBar: () => { s.barClosed = true; redraw() },
     }
     const theirs = await next(e)
     return ui.Box({ flexDirection: 'column', children: [s.isOpen ? appView(ui, vm, act) : miniView(ui, vm, act), theirs] })

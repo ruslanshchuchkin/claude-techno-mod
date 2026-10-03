@@ -85,6 +85,7 @@ function nextLine(ui, vm, act) {
     dim(ui, 'now ›'),
     ui.Text({ wrap: 'truncate-end', children: [vm.move.tip] }),
     vm.move.label ? btn(ui, vm, 'do-move', vm.move.label + ' ›', () => act.doMove(), { hotkey: 'n' }) : null,
+    btn(ui, vm, 'auto', vm.auto ? '● auto' : '○ auto', () => act.auto(), { hotkey: 'a' }),
   ])
 }
 
@@ -165,15 +166,20 @@ export function appView(ui, vm, act) {
   return col(ui, [...body, vm.status ? dim(ui, vm.status, { key: 'status', wrap: 'truncate-end' }) : null], { borderStyle: 'round', paddingX: 1 })
 }
 
-// One line above the chat box while music plays and the app is hidden.
+// The bar above the chat box while the app is hidden: play or stop, the
+// track and where it is, auto, next track, share, open, and × to close it.
 export function miniView(ui, vm, act) {
   const part = vm.track.part
-  const where = vm.replaying ? 'replaying the set' : part === null || part === undefined ? vm.track.bpm + ' bpm' : `${PLAN[part].section} · part ${part + 1}/${PLAN.length}`
+  const where = vm.replaying ? 'replaying the set' : part === null || part === undefined ? vm.track.bpm + ' bpm' : `${PLAN[part].section} ${part + 1}/${PLAN.length}`
   return row(ui, [
     ui.Text({ bold: true, children: ['♪'] }),
-    ui.Button({ key: 'mini-stop', label: '■ stop', plain: true, onPress: () => act.stop() }),
-    ui.Text({ wrap: 'truncate-end', children: [vm.track.phrase] }),
+    ui.Button({ key: 'mini-play', label: vm.playing ? '■ stop' : '▶ play', ...(vm.playing ? {} : { variant: 'primary' }), onPress: () => (vm.playing ? act.stop() : act.play()) }),
+    ui.Text({ bold: true, wrap: 'truncate-end', children: [vm.track.phrase] }),
     dim(ui, where),
-    ui.Button({ key: 'mini-open', label: 'open techno', plain: true, dimColor: true, onPress: () => act.open() }),
+    ui.Button({ key: 'mini-auto', label: vm.auto ? '● auto' : '○ auto', ...(vm.auto ? { variant: 'primary' } : {}), onPress: () => act.auto() }),
+    ui.Button({ key: 'mini-next', label: '⏭ next track', onPress: () => act.nextTrack() }),
+    ui.Button({ key: 'mini-share', label: '↗ share', onPress: () => act.copy() }),
+    ui.Button({ key: 'mini-open', label: 'open', plain: true, dimColor: true, onPress: () => act.open() }),
+    ui.Button({ key: 'mini-close', label: '×', plain: true, dimColor: true, onPress: () => act.closeBar() }),
   ], { columnGap: 2 })
 }

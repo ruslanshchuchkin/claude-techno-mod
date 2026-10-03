@@ -12,7 +12,7 @@ const PANE = {
 
 // Answers every call the mod makes that the kit does not answer itself
 function stubs(on: any) {
-  mock.clock(on)
+  const clock = mock.clock(on)
   mock.store(on, {})
   mock.env(on, { HOME: '/home/test' })
   on('session.start', () => ({ cwd: '/work/my-app' }))
@@ -31,6 +31,7 @@ function stubs(on: any) {
   })
   on('prompt.submit', ($: any, e: any) => ({ text: e.text }))
   on('ui.render', () => ({ type: 'Text', props: {}, children: ['drawn by Claude Code'] }))
+  return clock
 }
 
 const start = ($: any) => $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work/my-app' })
@@ -154,7 +155,10 @@ test('/techno hides the app, and a playing track shows a one-line player', async
   await $.command.run({ command: 'techno', args: 'ruslan' })
   await $.command.run({ command: 'techno', args: '' })
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  expect(await ui.find({ key: 'mini-stop' })).toBeDefined()
+  expect(await ui.find({ key: 'mini-play' })).toBeDefined()
+  expect(await ui.find({ key: 'mini-auto' })).toBeDefined()
+  expect(await ui.find({ key: 'mini-next' })).toBeDefined()
+  expect(await ui.find({ key: 'mini-share' })).toBeDefined()
   expect(await ui.find({ key: 'energy-up' })).toBeUndefined()
   await ui.press({ key: 'mini-open' })
   expect(await ui.find({ key: 'energy-up' })).toBeDefined()
@@ -176,4 +180,37 @@ test('a click on a grid cell adds a hit, and a click on a row name mutes the lay
     await ui.pointer({ type: 'down', x: 1, y: 2, button: 'left', in: 'grid' })
     await ui.unmount()
   }
+})
+
+test('auto builds a part per loop, then mixes into the next track at the same tempo', { timeoutMs: 60000 }, async ($, on) => {
+  const clock = stubs(on)
+  await start($)
+  await $.command.run({ command: 'techno', args: 'late night deploy' })
+  const bpm = (await $.command.run({ command: 'techno', args: 'code' })).text.match(/@(\d+)/)[1]
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await ui.press({ key: 'auto' })
+  const loopMs = (128 * 60000) / Number(bpm) / 4
+  await clock.advance(loopMs + 50)
+  expect((await $.command.run({ command: 'techno', args: 'code' })).text).toMatch(/p1$/)
+  // 10 parts, the peak and the drop twice: 12 loops in all, then the next track
+  for (let i = 0; i < 11; i++) await clock.advance(loopMs)
+  const code = (await $.command.run({ command: 'techno', args: 'code' })).text
+  expect(code).not.toContain('late-night-deploy')
+  expect(code).toContain('@' + bpm + 'm')
+  expect(code).toMatch(/p0$/)
+  await ui.unmount()
+})
+
+test('the bar closes with × and /techno brings the app back', async ($, on) => {
+  stubs(on)
+  await start($)
+  await $.command.run({ command: 'techno', args: 'ruslan' })
+  await $.command.run({ command: 'techno', args: '' })
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  await ui.press({ key: 'mini-play' })
+  await ui.press({ key: 'mini-close' })
+  expect(await ui.find({ key: 'mini-play' })).toBeUndefined()
+  await $.command.run({ command: 'techno', args: '' })
+  expect(await ui.find({ key: 'energy-up' })).toBeDefined()
+  await ui.unmount()
 })

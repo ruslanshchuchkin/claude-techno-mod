@@ -16,7 +16,7 @@ Needs Claude Code v2.1.287 or later (built and checked on v2.1.288).
 | `.claude-plugin/marketplace.json` | Local marketplace `techno-mod`, so the plugin installs as `techno@techno-mod`. |
 | `hooks/hooks.json` | Points to the hooks module. |
 | `hooks/register.js` | The mod: state, `/techno` command, `jam` tool, audio, save, share, click handlers. Every `$` call lives here (the validator refuses `$` passed to imported files). |
-| `hooks/views.js` | The app's screens as pure functions of `(ui, vm, act)`: the crate, the deck, the done card, and the one-line mini player. |
+| `hooks/views.js` | The app's screens as pure functions of `(ui, vm, act)`: the crate, the deck, the done card, and the bar shown while the app is hidden. |
 | `hooks/coach.js` | The coach: play first, then the NEXT button for the next part of `PLAN`, then the done card. Its `key` names the button drawn as `variant: 'primary'`. |
 | `hooks/grid.client.js` | A `Client` surface module: the step sequencer with its own playhead clock. Every step is a fixed-width `Box` with a background, so columns line up in any font. A click on a row name posts `{ toggle: layer }` (mute); a click on a cell posts `{ step, layer }` (add or remove that hit in every bar). |
 | `hooks/engine.js` | The synth, `PLAN` (the build), `toggleStep`, `renderSet`. Plain JS with no Node or browser APIs, so it also runs in node and in a page (a future web player). |
@@ -61,8 +61,18 @@ Needs Claude Code v2.1.287 or later (built and checked on v2.1.288).
   note, darker. Master: a 14 kHz low-pass before the clipper. About 3 dB more
   below 120 Hz than v0.2.
 - **Above the chat box, not a panel** (Ruslan, 2026-10-03). The app draws in the
-  `AbovePrompt` band. `/techno` shows or hides it. Hidden while music plays,
-  the band shows a one-line player (stop, open).
+  `AbovePrompt` band. `/techno` shows or hides it.
+- **The bar** (Ruslan, 2026-10-03: "a little bar that has play, stop, share and
+  auto ... maybe also a next track"). While the app is hidden, the band shows one
+  row: play/stop, the track and its part, auto, next track, share, open, ×. It
+  shows once techno was used in the session, until its ×; `/techno` brings the
+  app back. Share from the bar copies the play line and shows a toast.
+- **Auto** (same request: "it should just mix it nicely itself"). At each loop
+  boundary auto presses NEXT; the peak and the drop play two loops
+  (`AUTO_LOOPS`). After the outro it goes to the next track (this project, kept,
+  starters) at the SAME tempo, so the beat carries on. Timers use the `$` of the
+  call that set them: storing `$` in module state is refused at load. The jam
+  tool takes `auto: true|false`.
 
 ## Share code format
 

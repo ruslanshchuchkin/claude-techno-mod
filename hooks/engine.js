@@ -438,11 +438,11 @@ function renderAcid(buf, sr, a, total, sweep) {
 }
 
 // Freeverb: 8 combs and 4 allpasses per side.
-function reverb(inL, inR, sr, room, damp) {
+function reverbSide(input, sr, room, damp, spread) {
   const scale = sr / 44100
   const combT = [1116, 1188, 1277, 1356, 1422, 1491, 1557, 1617]
   const apT = [556, 441, 341, 225]
-  const side = (input, spread) => {
+  {
     const combs = combT.map((n) => ({ b: new Float32Array(Math.round((n + spread) * scale)), i: 0, f: 0 }))
     const aps = apT.map((n) => ({ b: new Float32Array(Math.round((n + spread) * scale)), i: 0 }))
     const out = new Float32Array(input.length)
@@ -466,7 +466,10 @@ function reverb(inL, inR, sr, room, damp) {
     }
     return out
   }
-  return [side(inL, 0), side(inR, 23)]
+}
+
+function reverb(inL, inR, sr, room, damp) {
+  return [reverbSide(inL, sr, room, damp, 0), reverbSide(inR, sr, room, damp, 23)]
 }
 
 function pingPong(input, sr, delaySeconds, feedback) {
@@ -490,6 +493,20 @@ function pingPong(input, sr, delaySeconds, feedback) {
 
 // ---------- render ----------
 
+// Renders one hit into its own buffer, so a drum is synthesized once per
+// render and then copied to each step.
+function template(sr, seconds, draw) {
+  const buf = new Float32Array(Math.round(seconds * sr))
+  draw(buf)
+  return buf
+}
+
+function stamp(buf, tpl, at, vel, sr) {
+  const start = Math.round(at * sr)
+  const n = Math.min(tpl.length, buf.length - start)
+  for (let i = 0; i < n; i++) buf[start + i] += tpl[i] * vel
+}
+
 // Renders the 8-bar loop. The reverb and delay tails fold back onto the start,
 // so the loop repeats without a seam.
 export function render(input, { sampleRate = 44100 } = {}) {
@@ -505,16 +522,21 @@ export function render(input, { sampleRate = 44100 } = {}) {
   const kick = bus(), bass = bus(), hats = bus(), clap = bus(), perc = bus(), acid = bus(), stab = bus()
 
   const k = { f0: 190 + r() * 50, f1: 44 + r() * 10, pitchDecay: 0.03 + r() * 0.015, ampDecay: 0.15 + r() * 0.06, drive: 1.3 + t.energy * 0.25 }
-  for (const e of a.events.kick) renderKick(kick, sr, stepAt(e.step, false), e.vel, k, noise)
+  const kickHit = template(sr, 0.42, (b) => renderKick(b, sr, 0, 1, k, noise))
+  for (const e of a.events.kick) stamp(kick, kickHit, stepAt(e.step, false), e.vel, sr)
 
   const bassCut = 180 + t.mood * 90 + t.energy * 25
   for (const e of a.events.bass) renderBass(bass, sr, stepAt(e.step, false), a.stepSeconds * 0.95, e.note, e.vel, bassCut, noise)
 
   const hatTone = 1.1 + r() * 0.5
-  for (const e of a.events.hats) renderHat(hats, sr, stepAt(e.step, true), e.vel, e.open, hatTone, noise)
-  for (const e of a.events.clap) renderClap(clap, sr, stepAt(e.step, false), e.vel, noise)
+  const closedHat = template(sr, 0.2, (b) => renderHat(b, sr, 0, 1, false, hatTone, noise))
+  const openHat = template(sr, 1.12, (b) => renderHat(b, sr, 0, 1, true, hatTone, noise))
+  for (const e of a.events.hats) stamp(hats, e.open ? openHat : closedHat, stepAt(e.step, true), e.vel, sr)
+  const clapHit = template(sr, 0.35, (b) => renderClap(b, sr, 0, 1, noise))
+  for (const e of a.events.clap) stamp(clap, clapHit, stepAt(e.step, false), e.vel, sr)
   const percPitch = 140 + r() * 120
-  for (const e of a.events.perc) renderPerc(perc, sr, stepAt(e.step, true), e.vel, e.kind, percPitch, noise)
+  const percHit = template(sr, 0.3, (b) => renderPerc(b, sr, 0, 1, a.percKind, percPitch, noise))
+  for (const e of a.events.perc) stamp(perc, percHit, stepAt(e.step, true), e.vel, sr)
 
   const loopSeconds = loop / sr
   const sweepBase = 260 + t.mood * 120
@@ -548,7 +570,7 @@ export function render(input, { sampleRate = 44100 } = {}) {
   // rumble: the kick through a long dark reverb, low-passed and heavily ducked
   let rumL = null
   if (a.on.rumble) {
-    const [rl] = reverb(kick, kick, sr, 0.9, 0.6)
+    const rl = reverbSide(kick, sr, 0.9, 0.6, 0)
     rumL = new Float32Array(total)
     let lp1 = 0, lp2 = 0
     const g = 1 - Math.exp((-TAU * 130) / sr)

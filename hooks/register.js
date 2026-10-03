@@ -1,17 +1,30 @@
-// techno: grow a techno loop from a phrase, then change it by talking to Claude.
+// techno: a small techno app inside Claude Code. Pick a track (or grow one
+// from a phrase), click to build it up, and share it with a code or an mp3.
+// A coach highlights the next thing to click. Claude can also change the
+// track from chat through the mcp__techno__jam tool.
 //
+// /techno              open the app
 // /techno <phrase>     a new track from the phrase (or from a share code)
-// /techno              open the pane
 // /techno stop | save | code
-// In chat: "darker", "add acid", "faster" -> Claude calls mcp__techno__jam.
-import { trackFor, cleanTrack, parseCode, encodeCode, describe, render, toWav, grid, LAYERS, MOODS, ENERGIES, BARS, BPM_MIN, BPM_MAX } from './engine.js'
+import { trackFor, cleanTrack, parseCode, encodeCode, describe, render, toWav, grid, activeLayers, LAYERS, MOODS, ENERGIES, BPM_MIN, BPM_MAX } from './engine.js'
+import { nextMove } from './coach.js'
+import { paneView } from './views.js'
 
 const PANE = 'techno'
 const TOOL = 'mcp__techno__jam'
 const GAIN = 0.7
 const LAYER_COLORS = { kick: 'red', bass: 'yellow', hats: 'cyan', clap: 'magenta', perc: 'blue', acid: 'green', stab: 'magenta' }
+const STARTERS = ['late night deploy', 'coffee at 3am', 'merge conflict', 'friday deploy', 'null pointer', 'ship it', 'warehouse 4am', 'rooftop sunrise']
+const ROOMS = [
+  ['basement', 0, 3],
+  ['warehouse', 1, 3],
+  ['afterhours', 2, 2],
+  ['rooftop', 3, 2],
+  ['sunrise', 4, 1],
+]
+const MOVE_LABELS = { play: '▶ play', energy: 'energy up', clap: 'add the clap', acid: 'add the acid', break: 'take the kick out', drop: 'kick back in', dice: 'roll the dice', keep: 'keep it', share: 'share it', next: 'next track' }
 
-// Module state. The track itself is also kept in $.store between sessions.
+// Module state. The track, your kept tracks, and the layout live in $.store too.
 const s = {
   track: null,
   history: [],
@@ -20,49 +33,69 @@ const s = {
   startedAt: 0,
   loopMs: 0,
   stepMs: 0,
-  ticker: null,
   isOpen: false,
-  view: 'main',
+  layout: 'C',
+  tab: 'tracks',
+  screen: 'crate',
+  showShare: false,
+  saved: [],
+  repo: [],
+  repoName: '',
+  radio: 0,
+  done: new Set(),
+  flags: { diced: false, kept: false, shared: false },
   lastPrompt: '',
   you: '',
   said: '',
   status: '',
   grids: new Map(),
+  isDev: false,
 }
 
 const shareLine = (t) => '/techno ' + encodeCode(t)
+const item = (label, sub, track = trackFor(label)) => ({ label, sub, code: encodeCode(track) })
 
-function gridFor(t, bar) {
-  const key = encodeCode(t) + '#' + bar
+function gridFor(t) {
+  const key = encodeCode(t)
   if (!s.grids.has(key)) {
     if (s.grids.size > 64) s.grids.clear()
-    s.grids.set(key, grid(t, bar))
+    s.grids.set(key, grid(t, 0))
   }
   return s.grids.get(key)
+}
+
+function stations() {
+  const seen = new Set()
+  const out = []
+  const add = (list, from) => {
+    for (const it of list) if (!seen.has(it.code)) { seen.add(it.code); out.push({ ...it, from }) }
+  }
+  add(s.saved, 'your tracks')
+  add(s.repo, 'from your repo · ' + s.repoName)
+  add(STARTERS.map((p) => item(p, '')), 'starter')
+  return out
 }
 
 // What changed between two tracks, in a few words: "mood 2→1, acid on"
 function diffWords(a, b) {
   if (!a) return 'new track'
+  if (a.phrase !== b.phrase) return 'new track: ' + b.phrase
   const out = []
-  if (a.phrase !== b.phrase) return 'new phrase'
   if (a.bpm !== b.bpm) out.push(`${a.bpm}→${b.bpm} bpm`)
   if (a.mood !== b.mood) out.push(`${MOODS[a.mood]}→${MOODS[b.mood]}`)
   if (a.energy !== b.energy) out.push(`${ENERGIES[a.energy]}→${ENERGIES[b.energy]}`)
   if (a.dice !== b.dice) out.push('new patterns')
   if (a.swing !== b.swing) out.push('swing ' + b.swing)
   if (a.transpose !== b.transpose) out.push('key +' + b.transpose)
-  for (const name of LAYERS) {
-    if (a.layers[name] !== b.layers[name]) out.push(name + (b.layers[name] === undefined ? ' auto' : b.layers[name] ? ' on' : ' off'))
-  }
+  const on1 = activeLayers(a), on2 = activeLayers(b)
+  for (const name of LAYERS) if (on1[name] !== on2[name]) out.push(name + (on2[name] ? ' in' : ' out'))
   return out.join(', ') || 'no change'
 }
 
 // ---------- audio ----------
 
 async function startAudio($) {
-  const t = s.track
-  const audio = render(t)
+  const audio = render(s.track)
   const loopMs = audio.seconds * 1000
   const now = await $.clock.now()
   // keep the beat: start the new loop at the same point in the bar
@@ -85,41 +118,62 @@ async function startAudio($) {
       $.ui.invalidate('ui.render')
     })
   if (old) old.abort()
-  startTicker($)
+  $.ui.invalidate('ui.render')
 }
 
 function stopAudio($) {
   if (s.ctrl) s.ctrl.abort()
   s.ctrl = null
   s.playing = false
-  stopTicker()
   $.ui.invalidate('ui.render')
-}
-
-// Redraw once per step while the pane shows a playing loop, so the playhead moves.
-function startTicker($) {
-  stopTicker()
-  if (!s.playing || !s.isOpen) return
-  s.ticker = $.clock.every(Math.max(60, Math.round(s.stepMs)), () => $.ui.invalidate('ui.render'))
-}
-
-function stopTicker() {
-  if (s.ticker) s.ticker.cancel()
-  s.ticker = null
 }
 
 // ---------- track changes ----------
 
-async function setTrack($, next, { play = true } = {}) {
+async function setTrack($, next, { play } = {}) {
   const clean = cleanTrack(next)
   if (s.track && encodeCode(s.track) === encodeCode(clean)) return clean
+  if (!s.track || s.track.phrase !== clean.phrase) {
+    s.done = new Set()
+    s.flags = { diced: false, kept: false, shared: false }
+  }
   if (s.track) s.history = [...s.history.slice(-29), s.track]
   s.track = clean
   s.status = ''
   await $.store.set('track', clean)
-  if (play || s.playing) await startAudio($)
+  if (play ?? s.playing) await startAudio($)
   $.ui.invalidate('ui.render')
   return clean
+}
+
+async function change($, fn) {
+  if (!s.track) return
+  const t = { ...s.track, layers: { ...s.track.layers } }
+  fn(t)
+  const from = s.track
+  const to = await setTrack($, t)
+  s.you = ''
+  s.said = diffWords(from, to)
+}
+
+async function toggleLayer($, name) {
+  await change($, (t) => {
+    const want = !activeLayers(t)[name]
+    delete t.layers[name]
+    if (activeLayers(t)[name] !== want) t.layers[name] = want
+  })
+}
+
+async function pick($, code) {
+  const t = parseCode(code) ?? trackFor(code)
+  await setTrack($, t, { play: true })
+  s.you = ''
+  s.said = 'now playing: ' + t.phrase
+  s.screen = 'deck'
+  s.showShare = false
+  const i = stations().findIndex((st) => st.code === encodeCode(t))
+  if (i >= 0) s.radio = i
+  $.ui.invalidate('ui.render')
 }
 
 async function undo($) {
@@ -134,24 +188,55 @@ async function undo($) {
   $.ui.invalidate('ui.render')
 }
 
-async function openPane($) {
-  s.isOpen = true
-  await $.ui.open({ id: PANE, title: 'techno', focus: true, columns: 46 })
-  startTicker($)
+async function keep($) {
+  const code = encodeCode(s.track)
+  if (s.saved.some((it) => it.code === code)) {
+    s.saved = s.saved.filter((it) => it.code !== code)
+    s.status = 'removed from your tracks'
+  } else {
+    s.saved = [item(s.track.phrase, describe(s.track), s.track), ...s.saved].slice(0, 20)
+    s.flags.kept = true
+    s.status = 'kept in your tracks'
+  }
+  await $.store.set('saved', s.saved)
   $.ui.invalidate('ui.render')
 }
 
-async function copyText($, text) {
+async function copyShare($) {
+  let ok = false
   try {
-    await $.ui.copy(text)
-    return true
+    const r = await $.ui.copy({ text: shareLine(s.track) })
+    ok = r?.isCopied !== false
   } catch {
     try {
-      const r = await $.process.run(['pbcopy'], { stdin: text, timeoutMs: 5000 })
-      return r.exitCode === 0
-    } catch {
-      return false
-    }
+      const r = await $.process.run(['pbcopy'], { stdin: shareLine(s.track), timeoutMs: 5000 })
+      ok = r.exitCode === 0
+    } catch { /* no clipboard */ }
+  }
+  s.flags.shared = true
+  s.status = ok ? 'play line copied. Paste it to a friend who has the mod.' : 'copy the play line above'
+  $.ui.invalidate('ui.render')
+}
+
+async function openPane($) {
+  s.isOpen = true
+  await $.ui.open({ id: PANE, title: 'techno', focus: true, columns: 60 })
+  $.ui.invalidate('ui.render')
+}
+
+// Reads the session's repo: branch, recent commit subjects, project name.
+async function loadRepo($) {
+  try {
+    const cwd = await $.session.cwd()
+    s.repoName = cwd.split('/').filter(Boolean).pop() ?? ''
+    const out = [item(s.repoName, 'project')]
+    const branch = await $.process.run(['git', 'rev-parse', '--abbrev-ref', 'HEAD'], { timeoutMs: 5000 })
+    if (branch.exitCode === 0 && branch.stdout.trim()) out.push(item(branch.stdout.trim(), 'branch'))
+    const log = await $.process.run(['git', 'log', '-3', '--pretty=%s'], { timeoutMs: 5000 })
+    if (log.exitCode === 0) for (const line of log.stdout.split('\n').map((l) => l.trim()).filter(Boolean)) out.push(item(line.slice(0, 40), 'commit'))
+    s.repo = out.filter((it, i, all) => it.label && all.findIndex((x) => x.code === it.code) === i)
+  } catch {
+    s.repo = []
   }
 }
 
@@ -196,147 +281,32 @@ async function save($) {
   }
 }
 
-// ---------- drawing ----------
-
-function bars(n) {
-  return '▮'.repeat(n + 1) + '▯'.repeat(4 - n)
-}
-
-function mainView($, e, ui, now) {
-  const { Box, Text, Button } = ui
+async function doMove($, id) {
   const t = s.track
-  if (!t) {
-    return Box({
-      flexDirection: 'column',
-      children: [
-        Text({ bold: true, children: ['techno'] }),
-        Text({ dimColor: true, children: ['Type a phrase. It becomes your track: the riff plays its letters.'] }),
-        ui.Input({
-          key: 'phrase',
-          label: 'phrase',
-          placeholder: 'late night deploy in bucharest',
-          value: '',
-          submitLabel: 'play',
-          autoFocus: true,
-          onSubmit: async (value) => {
-            if (!value.trim()) return
-            await setTrack($, parseCode(value) ?? trackFor(value))
-          },
-        }),
-      ],
-    })
-  }
-
-  const step = s.playing && s.loopMs ? Math.floor((((now - s.startedAt) % s.loopMs) + s.loopMs) % s.loopMs / s.stepMs) : -1
-  const bar = step >= 0 ? Math.floor(step / 16) % BARS : 0
-  const col = step >= 0 ? step % 16 : -1
-  const rows = Object.entries(gridFor(t, bar)).map(([name, pattern]) =>
-    Box({
-      key: 'row-' + name,
-      flexDirection: 'row',
-      children: [
-        Text({ dimColor: true, children: [name.padEnd(6)] }),
-        ...[...pattern].map((c, i) =>
-          Text({
-            key: name + i,
-            color: c === '.' ? undefined : LAYER_COLORS[name],
-            bold: c === 'X',
-            dimColor: c === '.',
-            inverse: i === col,
-            children: [c === '.' ? '·' : '■'],
-          }),
-        ),
-      ],
-    }),
-  )
-
-  const talk = []
-  if (s.you) talk.push(Text({ key: 'you', dimColor: true, wrap: 'truncate-end', children: ['you    › ' + s.you] }))
-  if (s.said) talk.push(Text({ key: 'said', wrap: 'truncate-end', children: ['claude › ' + s.said] }))
-  if (!talk.length) talk.push(Text({ key: 'hint', dimColor: true, wrap: 'wrap', children: ['Tell Claude what you want: "darker", "add acid", "faster", "drop the hats".'] }))
-
-  return Box({
-    flexDirection: 'column',
-    children: [
-      Box({
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        children: [
-          Text({ bold: true, children: [s.playing ? '▶ techno' : '■ techno'] }),
-          Text({ dimColor: true, children: [s.playing ? 'bar ' + (bar + 1) + '/' + BARS : 'stopped'] }),
-        ],
-      }),
-      Text({ bold: true, wrap: 'wrap', children: ['"' + t.phrase + '"'] }),
-      Text({ dimColor: true, wrap: 'wrap', children: [describe(t)] }),
-      Text({ dimColor: true, children: ['mood ' + bars(t.mood) + '  energy ' + bars(t.energy)] }),
-      Text({ children: [' '] }),
-      ...rows,
-      Text({ children: [' '] }),
-      ...talk,
-      Text({ children: [' '] }),
-      Box({
-        flexDirection: 'row',
-        flexWrap: 'wrap',
-        columnGap: 2,
-        children: [
-          Button({ key: 'play', label: s.playing ? 'stop' : 'play', hotkey: 'p', plain: true, autoFocus: true, onPress: () => (s.playing ? stopAudio($) : startAudio($)) }),
-          Button({ key: 'dice', label: 'dice', hotkey: 'd', plain: true, onPress: () => setTrack($, { ...s.track, dice: (s.track.dice + 1) % 1000 }).then(() => { s.you = ''; s.said = 'dice: new patterns' }) }),
-          Button({ key: 'undo', label: 'undo', hotkey: 'u', plain: true, onPress: () => undo($) }),
-          Button({ key: 'flyer', label: 'flyer', hotkey: 'f', plain: true, onPress: () => showFlyer($) }),
-          Button({ key: 'save', label: 'save mp3', hotkey: 's', plain: true, onPress: () => save($) }),
-        ],
-      }),
-      ...(s.status ? [Text({ key: 'status', dimColor: true, wrap: 'wrap', children: [s.status] })] : []),
-    ],
-  })
-}
-
-async function showFlyer($) {
-  s.view = 'flyer'
-  const ok = await copyText($, shareLine(s.track))
-  s.status = ok ? 'play line copied. Paste it anywhere.' : 'copy the line above to share it'
-  $.ui.invalidate('ui.render')
-}
-
-function flyerView($, e, ui) {
-  const { Box, Text, Button } = ui
-  const t = s.track
-  return Box({
-    flexDirection: 'column',
-    children: [
-      Box({
-        flexDirection: 'column',
-        borderStyle: 'double',
-        paddingX: 1,
-        children: [
-          Text({ bold: true, wrap: 'wrap', children: [t.phrase.toUpperCase()] }),
-          Text({ children: [' '] }),
-          Text({ wrap: 'wrap', children: [describe(t).toUpperCase()] }),
-          Text({ dimColor: true, wrap: 'wrap', children: ['a techno loop grown from a phrase'] }),
-          Text({ children: [' '] }),
-          Text({ dimColor: true, children: ['play it in claude code:'] }),
-          Text({ color: 'green', wrap: 'wrap', children: [shareLine(t)] }),
-        ],
-      }),
-      Box({
-        flexDirection: 'row',
-        columnGap: 2,
-        children: [
-          Button({ key: 'back', label: 'back', hotkey: 'b', plain: true, autoFocus: true, onPress: () => { s.view = 'main'; s.status = ''; $.ui.invalidate('ui.render') } }),
-          Button({ key: 'save2', label: 'save mp3', hotkey: 's', plain: true, onPress: () => save($) }),
-        ],
-      }),
-      ...(s.status ? [Text({ key: 'status', dimColor: true, wrap: 'wrap', children: [s.status] })] : []),
-    ],
-  })
+  if (id === 'play') return startAudio($)
+  if (id === 'energy') return change($, (x) => { x.energy = Math.min(4, x.energy + 1) })
+  if (id === 'clap' || id === 'acid' || id === 'break' || id === 'drop') return toggleLayer($, id === 'clap' ? 'clap' : id === 'acid' ? 'acid' : 'kick')
+  if (id === 'dice') { s.flags.diced = true; return change($, (x) => { x.dice = (x.dice + 1) % 1000 }) }
+  if (id === 'keep') return keep($)
+  if (id === 'share') { s.showShare = true; s.tab = 'share'; return copyShare($) }
+  const list = stations()
+  const i = (Math.max(0, list.findIndex((st) => st.code === encodeCode(t))) + 1) % list.length
+  return pick($, list[i].code)
 }
 
 // ---------- hooks ----------
 
 export function register(on) {
   on('session.start', async ($, e, next) => {
+    s.isDev = !$.plugin.root.includes('/plugins/cache/')
     const saved = await $.store.get('track')
     if (saved && typeof saved === 'object') s.track = cleanTrack(saved)
+    const kept = await $.store.get('saved')
+    if (Array.isArray(kept)) s.saved = kept.filter((it) => it && typeof it.code === 'string')
+    const layout = await $.store.get('layout')
+    if (layout === 'A' || layout === 'B' || layout === 'C') s.layout = layout
+    if (s.track) s.screen = 'deck'
+    await loadRepo($)
     await $.tool.register({
       name: 'jam',
       description:
@@ -364,7 +334,7 @@ export function register(on) {
         },
       },
     })
-    await $.command.register({ name: 'techno', description: 'Grow a techno loop from a phrase', argumentHint: '[phrase or share code | stop | save | code]', immediate: true })
+    await $.command.register({ name: 'techno', description: 'Open the techno app: pick a track and build it up', argumentHint: '[phrase or share code | stop | save | code]', immediate: true })
     return next(e)
   })
 
@@ -374,13 +344,8 @@ export function register(on) {
     if (word === 'stop') { stopAudio($); return { text: 'Stopped.' } }
     if (word === 'save') return { text: await save($) }
     if (word === 'code') return { text: s.track ? shareLine(s.track) : 'No track yet. Start with /techno <phrase>.' }
-    if (word === 'play' && s.track) { await startAudio($); await openPane($); return {} }
-    if (arg) {
-      const from = s.track
-      const t = await setTrack($, parseCode(arg) ?? trackFor(arg))
-      s.you = ''
-      s.said = from && from.phrase === t.phrase ? diffWords(from, t) : 'new track: ' + describe(t)
-    }
+    if (word === 'play' && s.track) await startAudio($)
+    else if (arg) await pick($, arg)
     await openPane($)
     return {}
   })
@@ -389,17 +354,17 @@ export function register(on) {
     const from = s.track ?? trackFor(e.phrase || 'techno')
     let t = e.phrase ? trackFor(e.phrase) : { ...from, layers: { ...from.layers } }
     for (const k of ['bpm', 'mood', 'energy', 'swing', 'transpose']) if (e[k] !== undefined) t[k] = e[k]
-    if (e.dice) t.dice = (t.dice + 1) % 1000
+    if (e.dice) { t.dice = (t.dice + 1) % 1000; s.flags.diced = true }
     for (const [name, v] of Object.entries(e.layers ?? {})) {
       if (!LAYERS.includes(name)) continue
       if (v === 'auto') delete t.layers[name]
       else t.layers[name] = v === true
     }
-    const wasPlaying = s.playing
-    t = await setTrack($, t, { play: e.play !== false && (wasPlaying || e.play === true || !s.track || !!e.phrase) })
+    t = await setTrack($, t, { play: e.play !== false && (s.playing || e.play === true || !s.track || !!e.phrase) })
     if (e.play === false) stopAudio($)
     s.you = s.lastPrompt
     s.said = (e.note && String(e.note).slice(0, 80)) || diffWords(from, t)
+    s.screen = 'deck'
     if (!s.isOpen) await openPane($)
     $.ui.invalidate('ui.render')
     return { result: `Now playing: "${t.phrase}", ${describe(t)}. Changed: ${diffWords(from, t)}. Share line: ${shareLine(t)}` }
@@ -416,9 +381,78 @@ export function register(on) {
   on('ui.render', { component: 'Pane' }, async ($, e, next) => {
     if (e.requestId !== PANE) return next(e)
     const ui = $.ui.resolve(e)
-    if (s.view === 'flyer' && s.track) return flyerView($, e, ui)
+    const t = s.track
     const now = await $.clock.now()
-    return mainView($, e, ui, now)
+    const move = nextMove(t, { playing: s.playing, ...s.flags }, s.done)
+    const layersOn = t ? activeLayers(t) : {}
+    const list = stations()
+    const station = list[s.radio % Math.max(1, list.length)]
+    const code = t ? encodeCode(t) : ''
+    const step = s.playing && s.loopMs ? Math.floor(((((now - s.startedAt) % s.loopMs) + s.loopMs) % s.loopMs) / s.stepMs) : 0
+    const rows = t ? Object.entries(gridFor({ ...t, layers: Object.fromEntries(LAYERS.map((n) => [n, true])) })).map(([name, pattern]) => [name, pattern, LAYER_COLORS[name], !!layersOn[name]]) : []
+    const vm = {
+      surface: e.surface,
+      dev: s.isDev,
+      layout: s.layout,
+      tab: s.tab,
+      screen: s.screen,
+      showShare: s.showShare,
+      track: t,
+      code,
+      desc: t ? describe(t) : '',
+      playing: s.playing,
+      on: layersOn,
+      move,
+      moveLabel: MOVE_LABELS[move.id],
+      isKept: s.saved.some((it) => it.code === code),
+      shareLine: t ? shareLine(t) : '',
+      you: s.you,
+      said: s.said,
+      status: s.status,
+      radio: { index: list.indexOf(station), total: list.length, from: station?.from ?? '' },
+      roomOptions: [...(t ? [{ value: code, label: t.phrase }] : []), ...ROOMS.map(([name]) => ({ value: roomCode(name), label: name })), ...s.saved.map((it) => ({ value: it.code, label: '♥ ' + it.label }))].filter((o, i, all) => all.findIndex((x) => x.value === o.value) === i),
+      roomValue: code,
+      crate: { repo: s.repo, repoName: s.repoName, saved: s.saved, starters: STARTERS.map((p) => item(p, describe(trackFor(p)))) },
+      gridEl: t ? ui.Client({ key: 'grid', module: './grid.client.js', props: { rows, step, stepMs: s.stepMs || 115, playing: s.playing, stamp: s.startedAt } }) : ui.Text({ children: [' '] }),
+    }
+    const redraw = () => $.ui.invalidate('ui.render')
+    const act = {
+      play: () => startAudio($),
+      stop: () => stopAudio($),
+      toggle: (name) => toggleLayer($, name),
+      energy: (d) => change($, (x) => { x.energy = Math.max(0, Math.min(4, x.energy + d)) }),
+      mood: (d) => change($, (x) => { x.mood = Math.max(0, Math.min(4, x.mood + d)) }),
+      bpm: (d) => change($, (x) => { x.bpm = Math.max(BPM_MIN, Math.min(BPM_MAX, x.bpm + d)) }),
+      dice: () => { s.flags.diced = true; return change($, (x) => { x.dice = (x.dice + 1) % 1000 }) },
+      undo: () => undo($),
+      keep: () => keep($),
+      share: () => { s.showShare = true; return copyShare($) },
+      copy: () => copyShare($),
+      closeShare: () => { s.showShare = false; s.status = ''; redraw() },
+      save: () => save($),
+      pick: (c) => pick($, c),
+      phrase: (text) => (String(text).trim() ? pick($, text) : undefined),
+      radio: (d) => {
+        const all = stations()
+        if (!all.length) return
+        s.radio = (s.radio + d + all.length) % all.length
+        return pick($, all[s.radio].code)
+      },
+      tab: (id) => { s.tab = id; if (id === 'share' && s.track) copyShare($); redraw() },
+      screen: (id) => { s.screen = id; redraw() },
+      layout: async (id) => { s.layout = id; redraw(); await $.store.set('layout', id) },
+      doMove: () => doMove($, move.id),
+    }
+    return paneView(ui, vm, act)
+  })
+
+  // A click on a grid row mutes or unmutes that layer.
+  on('ui.message', async ($, e, next) => {
+    if (e.element === 'grid' && e.data && typeof e.data.toggle === 'string' && LAYERS.includes(e.data.toggle)) {
+      await toggleLayer($, e.data.toggle)
+      return {}
+    }
+    return next(e)
   })
 
   // While music plays with the pane closed, one dim line above the prompt says so.
@@ -435,8 +469,6 @@ export function register(on) {
   on('ui.close', async ($, e, next) => {
     if (e.id === PANE) {
       s.isOpen = false
-      s.view = 'main'
-      stopTicker()
       $.ui.invalidate('ui.render')
     }
     return next(e)
@@ -446,7 +478,11 @@ export function register(on) {
     if (s.ctrl) s.ctrl.abort()
     s.ctrl = null
     s.playing = false
-    stopTicker()
     return next(e)
   })
+}
+
+function roomCode(name) {
+  const [, mood, energy] = ROOMS.find((r) => r[0] === name)
+  return encodeCode(cleanTrack({ ...trackFor(name), mood, energy }))
 }

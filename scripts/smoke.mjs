@@ -65,3 +65,12 @@ r = await fire('command.run', { command: 'techno', args: 'save' })
 console.log('/techno save ->', r.text, calls.filter((c) => c[0] === 'process.run').map((c) => c[1]).join(','))
 r = await fire('command.run', { command: 'techno', args: 'stop' })
 console.log('/techno stop ->', r.text)
+
+// the version in the jam answer must match the manifest, or a stale module hides
+{
+  const { readFileSync } = await import('node:fs')
+  const manifest = JSON.parse(readFileSync(new URL('../.claude-plugin/plugin.json', import.meta.url))).version
+  const inCode = readFileSync(new URL('../hooks/register.js', import.meta.url), 'utf8').match(/const VERSION = '([^']+)'/)?.[1]
+  console.log('version matches the manifest:', manifest === inCode, manifest, inCode)
+  if (manifest !== inCode) process.exit(1)
+}

@@ -43,7 +43,7 @@ test('/techno <phrase> starts the build at the kick, and /techno code prints its
   await start($)
   await $.command.run({ command: 'techno', args: 'late night deploy' })
   const code = await $.command.run({ command: 'techno', args: 'code' })
-  expect(code.text).toMatch(/^\/techno late-night-deploy@\d{3}m\de0k\dp0$/)
+  expect(code.text).toMatch(/^\/techno late-night-deploy@\d{3}m\de\dk\dp0$/)
 })
 
 test('the jam tool changes mood and layers, and the share line carries them', async ($, on) => {
@@ -276,4 +276,17 @@ test('with ffplay, one background player plays for every chat, and stop kills it
   await $.command.run({ command: 'techno', args: 'stop' })
   await clock.advance(10)
   expect(calls.some((c) => c.includes('kill -TERM') && c.includes('4242'))).toBe(true)
+})
+
+test('a mood sets the tempo and the energy too', async ($, on) => {
+  stubs(on)
+  await start($)
+  await $.command.run({ command: 'techno', args: 'ruslan' })
+  const sad = String((await $.tool.call({ tool: 'mcp__techno__jam', mood: 'sad' })).result)
+  expect(sad).toContain('122 bpm')
+  expect(sad).toContain('energy minimal')
+  const dark = String((await $.tool.call({ tool: 'mcp__techno__jam', mood: 'dark' })).result)
+  expect(dark).toContain('132 bpm')
+  expect(dark).toContain('energy rolling')
+  expect(dark).toMatch(/techno v\d+\.\d+\.\d+/)
 })

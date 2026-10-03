@@ -22,10 +22,11 @@ export const SCALES = [
 // The three moods you pick from. Each sets the sound (the old mood number:
 // filters, rumble, room) and the scale together, so they never disagree.
 // Old codes keep their own m and k; a pair that is no preset shows its nearest.
+// A mood also sets the tempo and lifts or lowers the energy of every part.
 export const VIBES = [
-  { name: 'sad', mood: 2, scale: 0 }, // minor, a little more air
-  { name: 'mysterious', mood: 1, scale: 3 }, // hijaz, the arabic one
-  { name: 'dark', mood: 0, scale: 2 }, // phrygian, pitch black
+  { name: 'sad', mood: 2, scale: 0, bpm: 122, lift: -1 }, // minor, a little more air, slower
+  { name: 'mysterious', mood: 1, scale: 3, bpm: 127, lift: 0 }, // hijaz, the arabic one
+  { name: 'dark', mood: 0, scale: 2, bpm: 132, lift: 1 }, // phrygian, pitch black, harder
 ]
 export function vibeOf(t) {
   const exact = VIBES.findIndex((v) => v.mood === t.mood && v.scale === scaleOf(t))
@@ -33,6 +34,15 @@ export function vibeOf(t) {
   return t.mood >= 2 ? 0 : scaleOf(t) === 3 ? 1 : t.mood === 0 ? 2 : 1
 }
 export const moodName = (t) => VIBES[vibeOf(t)].name
+
+// The track in another mood: its sound, scale, tempo, and the energy of its part.
+export function withVibe(input, name) {
+  const t = cleanTrack(input)
+  const v = VIBES.find((it) => it.name === name)
+  if (!v) return t
+  const energy = t.part === null || t.part === undefined ? t.energy : clamp(PLAN[t.part].energy + v.lift, 0, 4)
+  return { ...t, mood: v.mood, scale: v.scale, bpm: v.bpm, energy }
+}
 const scaleOf = (t) => t.scale ?? (t.mood === 0 ? 2 : t.mood >= 3 ? 1 : 0)
 const CHORDS = [[0, 3, 7, 12], [0, 3, 7, 10], [0, 3, 7, 10], [0, 3, 7, 10, 14], [0, 5, 7, 10, 14]]
 export const BARS = 8
@@ -106,8 +116,8 @@ const toInt = (v, lo, hi, fallback) => (Number.isFinite(Number(v)) ? clamp(Math.
 export function trackFor(phrase) {
   const p = normalizePhrase(phrase) || 'techno'
   const r = rng(hash32('track:' + p))
-  const bpm = 124 + Math.floor(r() * 12)
   const vibe = VIBES[Math.floor(r() * VIBES.length)]
+  const bpm = vibe.bpm + Math.floor(r() * 3) - 1
   return { phrase: p, bpm, mood: vibe.mood, energy: 2, dice: 0, swing: 0, transpose: 0, scale: vibe.scale, part: null, layers: {}, steps: {} }
 }
 
@@ -116,7 +126,7 @@ export function trackFor(phrase) {
 export function atPart(input, part) {
   const t = cleanTrack(input)
   const p = clamp(part, 0, PLAN.length - 1)
-  return { ...t, part: p, energy: PLAN[p].energy, layers: {} }
+  return { ...t, part: p, energy: clamp(PLAN[p].energy + VIBES[vibeOf(t)].lift, 0, 4), layers: {} }
 }
 
 // Fills gaps and clamps every field, so a state from a code or a tool call is safe.

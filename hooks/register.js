@@ -6,11 +6,14 @@
 // /techno              open the app
 // /techno <phrase>     a new track from the phrase (or from a share code)
 // /techno stop | save | code
-import { normalizePhrase, trackFor, atPart, cleanTrack, parseCode, encodeCode, describe, keyName, moodName, vibeOf, VIBES, render, renderSet, toWav, grid, toggleStep, activeLayers, LAYERS, GRID_LAYERS, PLAN, ENERGIES, BPM_MIN, BPM_MAX } from './engine.js'
+import { normalizePhrase, trackFor, atPart, cleanTrack, parseCode, encodeCode, describe, keyName, moodName, vibeOf, withVibe, VIBES, render, renderSet, toWav, grid, toggleStep, activeLayers, LAYERS, GRID_LAYERS, PLAN, ENERGIES, BPM_MIN, BPM_MAX } from './engine.js'
 import { nextMove } from './coach.js'
 import { appView, miniView } from './views.js'
 
 const TOOL = 'mcp__techno__jam'
+// The plugin version, in the jam tool's answer and the player log, so a stale
+// module in an old chat shows itself. Keep it equal to plugin.json (a test checks).
+const VERSION = '0.6.1'
 const GAIN = 0.7
 // [accent, normal] fill of a hit in the step grid
 const LAYER_COLORS = {
@@ -134,16 +137,24 @@ const setLength = () => {
 // there every 2 s, so every bar shows and controls the same music.
 // Without ffplay, each chat plays its own loop through $.audio.play.
 const PLAYER_SH = [
-  'f="$1"; vol="$2"; mode="$3"',
+  'f="$1"; vol="$2"; mode="$3"; log="$(dirname "$0")/player.log"',
+  'echo "$(date +%T) start $$ $mode $(basename "$f")" >> "$log"',
   'if [ "$mode" = loop ]; then set -- -loop 0; else set -- -autoexit; fi',
-  'ffplay -nodisp -loglevel quiet -volume "$vol" "$@" "$f" </dev/null >/dev/null 2>&1 &',
+  'ffplay -nodisp -loglevel error -volume "$vol" "$@" "$f" </dev/null >/dev/null 2>>"$log" &',
   'p=$!',
   'while kill -0 $p 2>/dev/null; do',
-  "  pgrep -f '/MacOS/claude|/share/claude/versions/' >/dev/null || { kill $p; exit 0; }",
+  "  if ! pgrep -f '/MacOS/claude|/share/claude/versions/' >/dev/null; then kill $p; echo \"$(date +%T) end $$: no Claude Code left\" >> \"$log\"; exit 0; fi",
   '  sleep 2',
   'done',
+  'wait $p; echo "$(date +%T) end $$: ffplay exited $?" >> "$log"',
   '',
 ].join('\n')
+
+// One line in the player log, so a stop can be traced to its cause.
+async function plog($, line) {
+  if (!s.dir) return
+  await $.process.run(['sh', '-c', 'echo "$(date +%T) mod: $2" >> "$1/player.log"', 'sh', s.dir, `${VERSION} ${line}`], { timeoutMs: 5000 }).catch(() => {})
+}
 // ffplay needs a moment to start; the new loop starts this far ahead to land on the beat
 const PLAYER_LATENCY_MS = 150
 
@@ -160,7 +171,7 @@ async function playerInit($) {
     const p = await $.store.get('player')
     if (p?.pid) {
       const alive = await $.process.run(['kill', '-0', String(p.pid)], { timeoutMs: 5000 })
-      if (alive.exitCode !== 0) await $.store.set('player', null)
+      if (alive.exitCode !== 0) { await plog($, `init: player ${p.pid} is gone, cleared`); await $.store.set('player', null) }
     }
     await syncPlayer($)
   } catch {
@@ -183,9 +194,10 @@ async function playerStart($, wav, mode) {
 }
 
 // Kills each player's process group: the watcher and its ffplay.
-async function playerKill($, pids) {
+async function playerKill($, pids, why) {
   const list = [...new Set(pids.filter(Boolean).map(String))]
   if (!list.length) return
+  await plog($, `kill ${list.join(' ')}: ${why}`)
   await $.process.run(['sh', '-c', 'for p in "$@"; do kill -TERM -- -"$p" 2>/dev/null; kill "$p" 2>/dev/null; done; true', 'sh', ...list], { timeoutMs: 5000 })
 }
 
@@ -263,7 +275,7 @@ async function startPlayer($, audio, now, offsetMs) {
     return
   }
   // the new loop starts first, then the old one stops: no gap on the beat
-  await playerKill($, [s.pid, before?.pid].filter((x) => x && x !== pid))
+  await playerKill($, [s.pid, before?.pid].filter((x) => x && x !== pid), 'a new loop replaced it')
   s.pid = pid
   s.playing = true
   s.replaying = false
@@ -275,7 +287,7 @@ async function startPlayer($, audio, now, offsetMs) {
   $.ui.invalidate('ui.render')
 }
 
-function stopAudio($) {
+function stopAudio($, why = 'stop') {
   if (s.ctrl) s.ctrl.abort()
   s.ctrl = null
   s.playing = false
@@ -287,7 +299,7 @@ function stopAudio($) {
     void (async () => {
       const p = await $.store.get('player')
       await $.store.set('player', null)
-      await playerKill($, [pid, p?.pid])
+      await playerKill($, [pid, p?.pid], why)
     })().catch(() => {})
   }
   $.ui.invalidate('ui.render')
@@ -365,7 +377,7 @@ async function replay($) {
     try {
       const before = await $.store.get('player')
       const pid = await playerStart($, wav, 'once')
-      await playerKill($, [s.pid, before?.pid].filter((x) => x && x !== pid))
+      await playerKill($, [s.pid, before?.pid].filter((x) => x && x !== pid), 'the set replay replaced it')
       const now = await $.clock.now()
       s.pid = pid
       s.playing = true
@@ -693,7 +705,7 @@ export function register(on) {
   on('command.run', { command: 'techno' }, async ($, e) => {
     const arg = String(e.args ?? '').trim()
     const word = arg.toLowerCase()
-    if (word === 'stop') { stopAudio($); return { text: 'Stopped.' } }
+    if (word === 'stop') { stopAudio($, 'the /techno stop command'); return { text: 'Stopped.' } }
     if (word === 'save') return { text: await save($) }
     if (word === 'code') return { text: s.track ? shareLine(s.track) : 'No track yet. Start with /techno <phrase>.' }
     if (word === 'play' && s.track) await startAudio($)
@@ -707,25 +719,24 @@ export function register(on) {
     if (typeof e.auto === 'boolean' && s.track) await setAuto($, e.auto)
     if (e.auto !== undefined && Object.keys(e).every((k) => ['tool', 'tool_use_id', 'auto', 'note', 'agentId'].includes(k))) {
       s.said = e.note ? String(e.note).slice(0, 80) : 'auto ' + (s.auto ? 'on' : 'off')
-      return { result: `Auto is ${s.auto ? 'on: the mod builds a part per loop, then mixes into the next track' : 'off'}. Now playing: "${s.track?.phrase ?? 'nothing'}".` }
+      return { result: `Auto is ${s.auto ? 'on: the mod builds a part per loop, then mixes into the next track' : 'off'}. Now playing: "${s.track?.phrase ?? 'nothing'}". (techno v${VERSION})` }
     }
     if (e.next && s.track && !e.phrase) {
       const from = s.track
       await advance($)
-      if (e.play === false) stopAudio($)
+      if (e.play === false) stopAudio($, 'the jam tool')
       s.you = s.lastPrompt
       if (e.note) s.said = String(e.note).slice(0, 80)
       s.screen = 'deck'
       openApp($)
       const where = s.finished ? 'the track is done' : `now at ${PLAN[s.track.part].section}, part ${s.track.part + 1} of ${PLAN.length}`
-      return { result: `Moved on: ${where}. Changed: ${diffWords(from, s.track)}. Share line: ${shareLine(s.track)}` }
+      return { result: `Moved on: ${where}. Changed: ${diffWords(from, s.track)}. Share line: ${shareLine(s.track)} (techno v${VERSION})` }
     }
     const from = s.track ?? startOf(e.phrase || 'techno')
     let t = e.phrase ? startOf(e.phrase) : { ...from, layers: { ...from.layers } }
     if (e.phrase) freshSet()
     for (const k of ['bpm', 'energy', 'swing', 'transpose']) if (e[k] !== undefined) t[k] = e[k]
-    const vibe = VIBES.find((v) => v.name === e.mood)
-    if (vibe) { t.mood = vibe.mood; t.scale = vibe.scale }
+    if (VIBES.some((v) => v.name === e.mood)) t = { ...withVibe(t, e.mood), ...(e.bpm !== undefined ? { bpm: e.bpm } : {}), ...(e.energy !== undefined ? { energy: e.energy } : {}) }
     if (e.dice) t.dice = (t.dice + 1) % 1000
     for (const [name, v] of Object.entries(e.layers ?? {})) {
       if (!LAYERS.includes(name)) continue
@@ -733,12 +744,13 @@ export function register(on) {
       else t.layers[name] = v === true
     }
     t = await setTrack($, t, { play: e.play !== false && (s.playing || e.play === true || !s.track || !!e.phrase) })
-    if (e.play === false) stopAudio($)
+    if (e.play === false) stopAudio($, 'the jam tool')
+    else if (e.play === true && !s.playing) await startAudio($)
     s.you = s.lastPrompt
     s.said = (e.note && String(e.note).slice(0, 80)) || diffWords(from, t)
     s.screen = 'deck'
     openApp($)
-    return { result: `Now playing: "${t.phrase}", ${describe(t)}. Changed: ${diffWords(from, t)}. Share line: ${shareLine(t)}` }
+    return { result: `Now playing: "${t.phrase}", ${describe(t)}. Changed: ${diffWords(from, t)}. Share line: ${shareLine(t)} (techno v${VERSION})` }
   })
 
   // Remember what the user asked, for the pane. While a loop plays, tell Claude about it.
@@ -795,10 +807,10 @@ export function register(on) {
     const redraw = () => $.ui.invalidate('ui.render')
     const act = {
       play: () => startAudio($),
-      stop: () => stopAudio($),
+      stop: () => stopAudio($, 'the stop button'),
       energy: (d) => change($, (x) => { x.energy = Math.max(0, Math.min(4, x.energy + d)) }),
-      setMood: (name) => change($, (x) => { const v = VIBES.find((it) => it.name === name); if (v) { x.mood = v.mood; x.scale = v.scale } }),
-      mood: (d) => change($, (x) => { const v = VIBES[Math.max(0, Math.min(VIBES.length - 1, vibeOf(x) + d))]; x.mood = v.mood; x.scale = v.scale }),
+      setMood: (name) => change($, (x) => Object.assign(x, withVibe(x, name))),
+      mood: (d) => change($, (x) => Object.assign(x, withVibe(x, VIBES[Math.max(0, Math.min(VIBES.length - 1, vibeOf(x) + d))].name))),
       bpm: (d) => change($, (x) => { x.bpm = Math.max(BPM_MIN, Math.min(BPM_MAX, x.bpm + d)) }),
       dice: () => change($, (x) => { x.dice = (x.dice + 1) % 1000 }),
       undo: () => undo($),

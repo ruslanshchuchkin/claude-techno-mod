@@ -71,6 +71,10 @@ Needs Claude Code v2.1.287 or later (built and checked on v2.1.288).
   (mood 1, hijaz), dark (mood 0, phrygian). The mood stepper and the jam tool's
   `mood` pick one by name and set `mood` and `scale` together. No key or scale
   stepper. A new phrase picks a random vibe. Old codes keep their m and k.
+- **A mood sets tempo and energy too** (Ruslan, 2026-10-03: "adjust tempo and
+  energy based on what I select"). `VIBES` carry `bpm` (sad 122, mysterious
+  127, dark 132) and `lift` (-1, 0, +1) on the energy of every part (`atPart`,
+  `withVibe`).
 - **Low keys** (same request: "make it lower ... deeper and heavier"). The
   phrase picks e, f, f#, g or a, so the sub root is e1..a1 (41..55 Hz). The
   dub chord sits two octaves over the root (e3..a3).
@@ -172,5 +176,12 @@ Do not change the meaning of an existing field: old codes must keep playing the 
   `~/Library/Application Support/Claude/claude-code/<version>/<hash>/claude.app/Contents/MacOS/claude plugin test`.
 - `screencapture` from a session shows only the wallpaper (no Screen Recording
   permission), so the desktop pane can't be captured from here. Ask Ruslan.
+- **Old chats keep old code.** Every desktop chat is its own `claude` process
+  and keeps the mod version it loaded; `/reload-plugins --force` did not swap
+  the jam tool in a chat started before the update. The jam answer ends with
+  `(techno vX.Y.Z)` (`VERSION` in register.js, checked against plugin.json by
+  `scripts/smoke.mjs`), so a stale chat shows itself. Test a new version in a
+  NEW chat. The background player logs every start, stop and its cause to
+  `~/Library/Caches/techno/player.log`.
 - `$.fs.write` writes text only. `save()` pipes base64 through
   `base64 --decode` with `$.process.run` stdin to write the WAV.

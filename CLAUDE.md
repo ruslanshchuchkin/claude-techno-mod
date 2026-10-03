@@ -44,10 +44,32 @@ Needs Claude Code v2.1.287 or later (built and checked on v2.1.288).
   (project, branch, last commits), kept tracks and starters; a pick opens the deck.
 - **No layer chips** (Ruslan, 2026-10-03). Energy, mood and tempo stay. Layers
   come and go through the build, a click on a grid row name, or Claude.
-- **The build is slow, one part per NEXT** (Ruslan, 2026-10-03). `PLAN` in
-  engine.js: kick alone, + hats, + bass, + percussion, + clap, + acid riff,
-  peak (+ chords, + rumble when dark), breakdown, drop, outro, then "finish".
-  The timeline shows the seven sections and "part n of 10".
+- **The build is slow, one part per NEXT** (Ruslan, 2026-10-03). The timeline
+  shows the seven sections and "part n of 10".
+- **Minimal, for focus** (Ruslan, 2026-10-03: "more minimal and more
+  focus-driven - it's for using claude", "keep the bass with all drums for
+  longer before we add clap"). `PLAN` in engine.js: kick, + sub bass, + hats,
+  + rumble, + percussion, + clap, peak (+ dub chord), breakdown, drop, outro.
+  The acid riff is not in the plan and not in the full track by default; Claude
+  or a grid click still brings it in. Rumble plays when the mood is deep or
+  darker. Max energy in the plan is 3. Auto plays the groove parts twice too.
+  The sections keep their old indexes, so an old `p<n>` code lands in the same
+  section, with the new layers.
+- **Heavier low end** (same request: "I want the bass to feel heavy"). The sub
+  root sits at e1..d#2 (was c2..b2), a driven sine; the saw growl plays an
+  octave up so laptop speakers still hear it. A bass note holds until the next
+  one (at most two steps). The kick's tail is tuned to the key root (39..56 Hz).
+  Hats, clap and percussion are quieter and darker; master low-pass at 12 kHz.
+  About 1.8 dB more below 100 Hz than v0.4.0.
+- **Pick the scale** (same request). `scale` in a track: null lets the mood
+  pick (old behaviour), or an index into `SCALES`: minor, dorian, phrygian,
+  hijaz (arabic), harmonic. A picked scale stacks its own dub chord. The deck
+  has `key` (transpose) and `scale` steppers; the jam tool takes `scale` by name.
+- **The bar in every chat** (Ruslan, 2026-10-03: "make the techno plugin
+  persistent over different chats"). `$.store` is global, so the track and the
+  kept list were already shared. Now `bar: true` in the store makes a new
+  session show the bar (paused, same track) until its ×. A new chat never
+  starts audio by itself: two chats would play over each other.
 - **The done card** (Ruslan, 2026-10-03): replay the set, save the set as mp3,
   remix it (dice + 1, step edits cleared, back to the kick), keep, share, new
   track. The set is the state you left each part in, so tweaks and step edits
@@ -76,9 +98,10 @@ Needs Claude Code v2.1.287 or later (built and checked on v2.1.288).
 
 ## Share code format
 
-`<phrase-with-hyphens>@<bpm>m<mood>e<energy>[d<dice>][s<swing>][t<transpose>][p<part>][+layer|-layer...][*<layer><on hex4><off hex4>...]`
+`<phrase-with-hyphens>@<bpm>m<mood>e<energy>[d<dice>][s<swing>][t<transpose>][k<scale>][p<part>][+layer|-layer...][*<layer><on hex4><off hex4>...]`
 
-Example: `late-night-deploy@131m1e2d3p4+acid-hats*kick00040000`. `p` is the part of
+Example: `late-night-deploy@131m1e2d3p4+acid-hats*kick00040000`. `k` is a picked
+scale (0..4, see `SCALES`); without it the mood picks. `p` is the part of
 the build (0..9); without it the track is the old full track, where mood and
 energy decide the layers. `*` is a step edit: a 16-bit mask of steps forced on
 and one forced off, the same in every bar (grid layers only, not rumble). Layers: kick, bass, hats,

@@ -54,6 +54,8 @@ function controls(ui, vm, act) {
     stepper(ui, vm, 'energy', ENERGIES[t.energy], () => act.energy(-1), () => act.energy(1)),
     stepper(ui, vm, 'mood', MOODS[t.mood], () => act.mood(-1), () => act.mood(1)),
     stepper(ui, vm, 'tempo', String(t.bpm), () => act.bpm(-2), () => act.bpm(2)),
+    stepper(ui, vm, 'key', vm.note, () => act.key(-1), () => act.key(1)),
+    stepper(ui, vm, 'scale', vm.scale, () => act.scale(-1), () => act.scale(1)),
   ], { columnGap: 3 })
 }
 
@@ -91,7 +93,7 @@ function nextLine(ui, vm, act) {
 
 function talkLine(ui, vm) {
   if (vm.said) return row(ui, [vm.you ? dim(ui, 'you: ' + vm.you, { wrap: 'truncate-end' }) : null, ui.Text({ wrap: 'truncate-end', children: ['claude › ' + vm.said] })], { columnGap: 2 })
-  return dim(ui, 'or ask Claude in chat: "darker", "faster", "more acid", "next part"', { wrap: 'truncate-end' })
+  return dim(ui, 'or ask Claude in chat: "darker", "heavier bass", "arabic scale", "next part"', { wrap: 'truncate-end' })
 }
 
 function shareBlock(ui, vm, act) {

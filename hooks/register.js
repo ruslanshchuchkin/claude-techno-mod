@@ -6,7 +6,7 @@
 // /techno              open the app
 // /techno <phrase>     a new track from the phrase (or from a share code)
 // /techno stop | save | code
-import { normalizePhrase, trackFor, atPart, cleanTrack, parseCode, encodeCode, describe, keyName, render, renderSet, toWav, grid, toggleStep, activeLayers, LAYERS, GRID_LAYERS, PLAN, MOODS, ENERGIES, BPM_MIN, BPM_MAX } from './engine.js'
+import { normalizePhrase, trackFor, atPart, cleanTrack, parseCode, encodeCode, describe, keyName, noteName, scaleName, SCALES, render, renderSet, toWav, grid, toggleStep, activeLayers, LAYERS, GRID_LAYERS, PLAN, MOODS, ENERGIES, BPM_MIN, BPM_MAX } from './engine.js'
 import { nextMove } from './coach.js'
 import { appView, miniView } from './views.js'
 
@@ -51,6 +51,7 @@ const s = {
   // the bar above the chat box while the app is hidden: shown once you used techno, until its ×
   used: false,
   barClosed: false,
+  barStored: false,
   lastPrompt: '',
   you: '',
   said: '',
@@ -62,8 +63,8 @@ const shareLine = (t) => '/techno ' + encodeCode(t)
 const startOf = (phrase) => atPart(trackFor(phrase), 0)
 const item = (label, sub, track = startOf(label)) => ({ label, sub, code: encodeCode(track) })
 const isBuilding = (t) => t && t.part !== null && t.part !== undefined
-// How many loops auto plays a part for: the peak and the drop get two.
-const AUTO_LOOPS = { peak: 2, drop: 2 }
+// How many loops auto plays a part for: the groove, the peak and the drop get two.
+const AUTO_LOOPS = { groove: 2, peak: 2, drop: 2 }
 const loopsFor = (t) => (isBuilding(t) ? AUTO_LOOPS[PLAN[t.part].section] ?? 1 : 2)
 
 function gridFor(t) {
@@ -86,7 +87,8 @@ function diffWords(a, b) {
   if (a.energy !== b.energy) out.push(`${ENERGIES[a.energy]}→${ENERGIES[b.energy]}`)
   if (a.dice !== b.dice) out.push('new patterns')
   if (a.swing !== b.swing) out.push('swing ' + b.swing)
-  if (a.transpose !== b.transpose) out.push('key +' + b.transpose)
+  if (a.transpose !== b.transpose) out.push('key ' + keyName(b))
+  else if (a.scale !== b.scale || (a.mood !== b.mood && scaleName(a) !== scaleName(b))) out.push(scaleName(b) + ' scale')
   if (JSON.stringify(a.steps) !== JSON.stringify(b.steps)) out.push('steps edited')
   const on1 = activeLayers(a), on2 = activeLayers(b)
   for (const name of LAYERS) if (on1[name] !== on2[name]) out.push(name + (on2[name] ? ' in' : ' out'))
@@ -247,7 +249,7 @@ async function setTrack($, next, { play } = {}) {
   if (s.track && encodeCode(s.track) === encodeCode(clean)) return clean
   if (!s.track || s.track.phrase !== clean.phrase) freshSet()
   if (!s.track || s.track.phrase !== clean.phrase || s.track.part !== clean.part) s.autoLoops = 0
-  s.used = true
+  markUsed($)
   if (s.track) s.history = [...s.history.slice(-29), s.track]
   s.track = clean
   s.status = ''
@@ -370,8 +372,22 @@ async function copyShare($) {
 // The app lives in the band above the chat box; these show and hide it.
 function openApp($) {
   s.isOpen = true
+  markUsed($)
+  $.ui.invalidate('ui.render')
+}
+
+// The bar follows you into every chat: once you used techno, a new session
+// shows it too (paused, on the same track) until you close it with its ×.
+function markUsed($) {
   s.used = true
   s.barClosed = false
+  if (!s.barStored) { s.barStored = true; $.store.set('bar', true) }
+}
+
+function closeBar($) {
+  s.barClosed = true
+  s.barStored = false
+  $.store.set('bar', false)
   $.ui.invalidate('ui.render')
 }
 
@@ -467,12 +483,13 @@ export function register(on) {
     const kept = await $.store.get('saved')
     if (Array.isArray(kept)) s.saved = kept.filter((it) => it && typeof it.code === 'string')
     if (s.track) s.screen = 'deck'
+    if (s.track && (await $.store.get('bar')) === true) { s.used = true; s.barStored = true }
     await loadRepo($)
     await $.tool.register({
       name: 'jam',
       description:
         "Change the techno loop in the user's techno pane (the techno mod). Use it when the user asks to change the music: darker or brighter, more or less energy, faster or slower, add or drop a layer, new patterns, the next part of the build, or a new phrase. Pass only what changes. " +
-        'mood: 0 pitch black, 1 dark, 2 deep, 3 warm, 4 bright. energy: 0 minimal, 1 rolling, 2 driving, 3 peak, 4 rave. ' +
+        'mood: 0 pitch black, 1 dark, 2 deep, 3 warm, 4 bright. scale: the scale of the key, by name. energy: 0 minimal, 1 rolling, 2 driving, 3 peak, 4 rave. ' +
         'A track is built in parts (intro, groove, build, peak, break, drop, outro); next: true moves to the next part, as the NEXT button does. ' +
         'layers: true forces a layer on, false forces it off, "auto" gives it back to the build. dice: true rolls new patterns. phrase: a new phrase starts a new track from the kick. ' +
         'note: a few words for the pane that say what you changed. The result gives the new track and its share line. Reply to the user in one short line.',
@@ -486,6 +503,7 @@ export function register(on) {
           energy: { type: 'integer', minimum: 0, maximum: 4 },
           swing: { type: 'integer', minimum: 0, maximum: 3, description: '0 straight, 3 most shuffle on hats and percussion' },
           transpose: { type: 'integer', minimum: 0, maximum: 11, description: 'Semitones up from the phrase key' },
+          scale: { enum: [...SCALES.map((sc) => sc.name), 'auto'], description: 'minor (sad, the classic), dorian (cool), phrygian (dark, tense), hijaz (arabic), harmonic (dramatic). auto lets the mood pick' },
           dice: { type: 'boolean', description: 'Roll new patterns for the same phrase' },
           layers: {
             type: 'object',
@@ -536,6 +554,8 @@ export function register(on) {
     let t = e.phrase ? startOf(e.phrase) : { ...from, layers: { ...from.layers } }
     if (e.phrase) freshSet()
     for (const k of ['bpm', 'mood', 'energy', 'swing', 'transpose']) if (e[k] !== undefined) t[k] = e[k]
+    if (e.scale === 'auto') t.scale = null
+    else if (e.scale !== undefined) { const i = SCALES.findIndex((sc) => sc.name === e.scale); if (i >= 0) t.scale = i }
     if (e.dice) t.dice = (t.dice + 1) % 1000
     for (const [name, v] of Object.entries(e.layers ?? {})) {
       if (!LAYERS.includes(name)) continue
@@ -585,6 +605,8 @@ export function register(on) {
       code,
       desc: t ? describe(t) : '',
       key: t ? keyName(t) : '',
+      note: t ? noteName(t) : '',
+      scale: t ? scaleName(t) : '',
       playing: s.playing,
       replaying: s.replaying,
       auto: s.auto,
@@ -606,6 +628,8 @@ export function register(on) {
       energy: (d) => change($, (x) => { x.energy = Math.max(0, Math.min(4, x.energy + d)) }),
       mood: (d) => change($, (x) => { x.mood = Math.max(0, Math.min(4, x.mood + d)) }),
       bpm: (d) => change($, (x) => { x.bpm = Math.max(BPM_MIN, Math.min(BPM_MAX, x.bpm + d)) }),
+      key: (d) => change($, (x) => { x.transpose = (x.transpose + d + 12) % 12 }),
+      scale: (d) => change($, (x) => { x.scale = (SCALES.findIndex((sc) => sc.name === scaleName(x)) + d + SCALES.length) % SCALES.length }),
       dice: () => change($, (x) => { x.dice = (x.dice + 1) % 1000 }),
       undo: () => undo($),
       keep: () => keep($),
@@ -624,7 +648,7 @@ export function register(on) {
       close: () => hideApp($),
       auto: () => setAuto($, !s.auto),
       nextTrack: () => nextTrack($),
-      closeBar: () => { s.barClosed = true; redraw() },
+      closeBar: () => closeBar($),
     }
     const theirs = await next(e)
     return ui.Box({ flexDirection: 'column', children: [s.isOpen ? appView(ui, vm, act) : miniView(ui, vm, act), theirs] })

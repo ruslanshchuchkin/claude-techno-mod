@@ -11,9 +11,9 @@ const PANE = {
 } as const
 
 // Answers every call the mod makes that the kit does not answer itself
-function stubs(on: any) {
+function stubs(on: any, store: Record<string, unknown> = {}) {
   const clock = mock.clock(on)
-  mock.store(on, {})
+  mock.store(on, store)
   mock.env(on, { HOME: '/home/test' })
   on('session.start', () => ({ cwd: '/work/my-app' }))
   on('session.cwd', () => ({ value: '/work/my-app' }))
@@ -113,9 +113,11 @@ test('the deck has energy, mood and tempo, a grid, and no layer chips', async ($
   }
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   await ui.press({ key: 'tempo-up' })
+  await ui.press({ key: 'key-up' })
+  await ui.press({ key: 'scale-up' })
   await ui.unmount()
   const code = await $.command.run({ command: 'techno', args: 'code' })
-  expect(code.text).toMatch(/p0/)
+  expect(code.text).toMatch(/t1k\dp0/)
 })
 
 test('play is lit first, then NEXT builds the track part by part to the done card', { timeoutMs: 30000 }, async ($, on) => {
@@ -127,7 +129,7 @@ test('play is lit first, then NEXT builds the track part by part to the done car
   expect((await ui.find({ key: 'play' }))?.props.variant).toBe('primary')
   await ui.press({ key: 'play' })
   expect((await ui.find({ key: 'do-move' }))?.props.variant).toBe('primary')
-  expect((await ui.find({ key: 'do-move' }))?.props.label).toContain('+ hats')
+  expect((await ui.find({ key: 'do-move' }))?.props.label).toContain('+ sub bass')
   for (let i = 0; i < PLAN.length; i++) await ui.press({ key: 'do-move' })
   expect(await ui.find({ type: 'Text', text: /Your track is done/ })).toBeDefined()
   expect(await ui.find({ key: 'replay' })).toBeDefined()
@@ -192,8 +194,8 @@ test('auto builds a part per loop, then mixes into the next track at the same te
   const loopMs = (128 * 60000) / Number(bpm) / 4
   await clock.advance(loopMs + 50)
   expect((await $.command.run({ command: 'techno', args: 'code' })).text).toMatch(/p1$/)
-  // 10 parts, the peak and the drop twice: 12 loops in all, then the next track
-  for (let i = 0; i < 11; i++) await clock.advance(loopMs)
+  // 10 parts, the two groove parts, the peak and the drop twice: 14 loops in all, then the next track
+  for (let i = 0; i < 13; i++) await clock.advance(loopMs)
   const code = (await $.command.run({ command: 'techno', args: 'code' })).text
   expect(code).not.toContain('late-night-deploy')
   expect(code).toContain('@' + bpm + 'm')
@@ -212,5 +214,25 @@ test('the bar closes with × and /techno brings the app back', async ($, on) => 
   expect(await ui.find({ key: 'mini-play' })).toBeUndefined()
   await $.command.run({ command: 'techno', args: '' })
   expect(await ui.find({ key: 'energy-up' })).toBeDefined()
+  await ui.unmount()
+})
+
+test('a picked scale rides in the share code, and the jam tool picks one by name', async ($, on) => {
+  stubs(on)
+  await start($)
+  await $.command.run({ command: 'techno', args: 'ruslan' })
+  const r = await $.tool.call({ tool: 'mcp__techno__jam', scale: 'hijaz' })
+  expect(String(r.result)).toContain('hijaz')
+  expect(String(r.result)).toMatch(/k3p0/)
+  expect(encodeCode(parseCode('ruslan@130m1e2k3p4')!)).toBe('ruslan@130m1e2k3p4')
+  const back = await $.tool.call({ tool: 'mcp__techno__jam', scale: 'auto' })
+  expect(String(back.result)).not.toMatch(/k\d/)
+})
+
+test('the bar follows you into a new chat once you used techno', async ($, on) => {
+  stubs(on, { track: atPart(trackFor('ruslan'), 3), bar: true })
+  await start($)
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect(await ui.find({ key: 'mini-play' })).toBeDefined()
   await ui.unmount()
 })

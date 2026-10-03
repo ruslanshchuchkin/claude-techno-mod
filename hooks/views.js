@@ -5,7 +5,7 @@
 //
 // Two screens: the crate (pick a track) and the deck (build it up). When the
 // build is finished, the deck shows the done card.
-import { SECTIONS, PLAN, ENERGIES } from './engine.js'
+import { PLAN, VIBES } from './engine.js'
 
 // A button that the coach can highlight: the suggested one is the primary
 // button, with a marker in the terminal where primary is only a color.
@@ -36,9 +36,16 @@ function header(ui, vm, act, middle) {
   })
 }
 
+// The three moods as stations: the one on air is a button, the others plain words.
+function stations(ui, vm, act) {
+  return row(ui, VIBES.map((v) => ui.Button({ key: 'mood-' + v.name, label: v.name, ...(v.name === vm.mood ? {} : { plain: true, dimColor: true }), onPress: () => act.setMood(v.name) })), { columnGap: 2 })
+}
+
+// Row 1: play, the track, where its name comes from; how far the build is, on the right.
 function nowPlaying(ui, vm, act) {
   const part = vm.track.part
-  const where = part === null || part === undefined ? 'full track' : `${part + 1}/${PLAN.length}`
+  const building = part !== null && part !== undefined
+  const done = building ? part + 1 : 0
   return ui.Box({
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -47,69 +54,43 @@ function nowPlaying(ui, vm, act) {
       row(ui, [
         btn(ui, vm, 'play', vm.playing ? '■ stop' : '▶ play', () => (vm.playing ? act.stop() : act.play()), { hotkey: 'p' }),
         ui.Text({ bold: true, wrap: 'truncate-end', children: [vm.track.phrase] }),
-        dim(ui, '· ' + vm.key, { wrap: 'truncate-end' }),
+        dim(ui, '· ' + vm.source, { wrap: 'truncate-end' }),
       ]),
-      dim(ui, where),
+      building
+        ? row(ui, [dim(ui, PLAN[part].section), ui.Box({ flexDirection: 'row', children: [ui.Text({ children: ['▰'.repeat(done)] }), dim(ui, '▱'.repeat(PLAN.length - done))] }), dim(ui, `${done}/${PLAN.length}`)])
+        : dim(ui, 'full track'),
     ],
   })
 }
 
-function stepper(ui, vm, name, value, down, up) {
-  return row(ui, [dim(ui, name), btn(ui, vm, name + '-down', '−', down), ui.Text({ children: [value] }), btn(ui, vm, name + '-up', '+', up)])
-}
-
-function controls(ui, vm, act) {
-  const t = vm.track
-  return row(ui, [
-    stepper(ui, vm, 'energy', ENERGIES[t.energy], () => act.energy(-1), () => act.energy(1)),
-    stepper(ui, vm, 'mood', vm.mood, () => act.mood(-1), () => act.mood(1)),
-    stepper(ui, vm, 'tempo', String(t.bpm), () => act.bpm(-2), () => act.bpm(2)),
-  ], { columnGap: 3 })
-}
-
-function actions(ui, vm, act) {
-  return row(ui, [
-    btn(ui, vm, 'dice', '⚄ dice', () => act.dice(), { hotkey: 'd' }),
-    btn(ui, vm, 'undo', '↶ undo', () => act.undo(), { hotkey: 'u' }),
-    btn(ui, vm, 'keep', vm.isKept ? '♥ kept' : '♡ keep', () => act.keep(), { hotkey: 'k' }),
-    btn(ui, vm, 'share', '↗ share', () => act.share(), { hotkey: 's' }),
-  ])
-}
-
-// Where you are in the track: the seven sections in a row, the current one
-// inverted, and under it what you hear now. The tip hangs from the current
-// section (absolute, in cells), so it lines up in any font.
-function timeline(ui, vm) {
-  const part = vm.track.part
-  const cur = part === null || part === undefined ? -1 : SECTIONS.indexOf(PLAN[part].section)
-  const parts = []
-  SECTIONS.forEach((p, i) => {
-    if (i) parts.push(ui.Text({ key: 'sep' + i, dimColor: true, children: ['·'] }))
-    const name = ui.Text({ bold: i === cur, inverse: i === cur, dimColor: cur >= 0 && i > cur, children: [i === cur ? ' ' + p + ' ' : p] })
-    if (i !== cur) { parts.push(ui.Box({ key: 'part-' + p, children: [name] })); return }
-    const tip = ui.Box({ position: 'absolute', top: 1, left: 1, children: [dim(ui, '↳ ' + vm.move.tip, { wrap: 'truncate-end' })] })
-    parts.push(ui.Box({ key: 'part-' + p, children: [name, tip] }))
-  })
-  return ui.Box({ flexDirection: 'row', columnGap: 1, children: parts })
-}
-
-// The NEXT button that adds the next part, and auto. Without a part (the full
-// track) the tip sits here, since no section is lit to hang it from.
+// Row 2: what you hear now, in plain words; the next step and auto on the right.
 function nextLine(ui, vm, act) {
-  const part = vm.track.part
-  const loose = part === null || part === undefined
   return ui.Box({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     children: [
-      loose ? dim(ui, vm.move.tip, { wrap: 'truncate-end' }) : ui.Box({ flexGrow: 1 }),
+      row(ui, [dim(ui, vm.playing ? 'now' : 'paused'), ui.Text({ wrap: 'truncate-end', children: [vm.hearing] })]),
       row(ui, [
         vm.move.label ? btn(ui, vm, 'do-move', vm.move.label + ' ›', () => act.doMove(), { hotkey: 'n' }) : null,
-        btn(ui, vm, 'auto', vm.auto ? '● auto' : '○ auto', () => act.auto(), { hotkey: 'a' }),
+        btn(ui, vm, 'auto', vm.auto ? '● playing by itself' : 'let it play itself', () => act.auto()),
       ]),
     ],
   })
+}
+
+// Row 3: the small knobs, as words that say what they do.
+function knobs(ui, vm, act) {
+  const t = vm.track
+  const word = (key, label, onPress) => ui.Button({ key, label, plain: true, dimColor: vm.move?.key !== key, onPress })
+  const sep = (k) => dim(ui, '·', { key: 'sep-' + k })
+  return row(ui, [
+    word('tempo-down', 'slower', () => act.bpm(-2)), ui.Text({ children: [String(t.bpm)] }), word('tempo-up', 'faster', () => act.bpm(2)), sep(1),
+    word('energy-down', 'calmer', () => act.energy(-1)), word('energy-up', 'busier', () => act.energy(1)), sep(2),
+    word('dice', 'new rhythm', () => act.dice()), word('undo', 'undo', () => act.undo()), sep(3),
+    word('keep', vm.isKept ? '♥ saved' : '♡ save', () => act.keep()), word('share', 'share', () => act.share()), sep(4),
+    word('back', 'other tracks', () => act.screen('crate')),
+  ], { columnGap: 1 })
 }
 
 function talkLine(ui, vm) {
@@ -174,11 +155,10 @@ function crate(ui, vm, act) {
 
 function deck(ui, vm, act) {
   return [
-    header(ui, vm, act, [ui.Button({ key: 'back', label: '◂ crate', plain: true, dimColor: true, onPress: () => act.screen('crate') })]),
+    header(ui, vm, act, [stations(ui, vm, act)]),
     nowPlaying(ui, vm, act),
-    timeline(ui, vm),
     vm.finished ? doneCard(ui, vm, act) : nextLine(ui, vm, act),
-    row(ui, [controls(ui, vm, act), vm.finished ? null : actions(ui, vm, act)], { columnGap: 3 }),
+    knobs(ui, vm, act),
     vm.gridEl,
     vm.showShare ? shareBlock(ui, vm, act) : talkLine(ui, vm),
   ]

@@ -77,14 +77,27 @@ Needs Claude Code v2.1.287 or later (built and checked on v2.1.288).
 - **The bar in every chat** (Ruslan, 2026-10-03: "make the techno plugin
   persistent over different chats"). `$.store` is global, so the track and the
   kept list were already shared. Now `bar: true` in the store makes a new
-  session show the bar (paused, same track) until its ×. A new chat never
-  starts audio by itself: two chats would play over each other.
-- **Header layout B, "one line"** (Ruslan, 2026-10-03: "I like B bc it's
-  cleaner", with the "next:" label from A). Row 1: play, the phrase, the key,
-  and `n/10` on the right. Row 2: the seven sections joined by `·`, the current
-  one inverted. Under it, `↳ tip` hangs from the current section as an
-  absolute Box (cells, so it lines up in any font). Row 3: `next: + ... ›` and
-  auto on the right. Tips in `PLAN` are short fragments, no full stop.
+  session show the bar (same track) until its ×. With the background player
+  the music itself carries on too (see below).
+- **The deck top is the "radio"** (Ruslan, 2026-10-03: "I like B but I still
+  like the grid ... my problem was with stuff above the grid: too much text,
+  not clear"). Seeds: A `nWGSepVLrXVhTB1` desk, B `OMGZxLeoTdAXrvr` radio,
+  C `O8bwmwV7G6rK4Ua` autopilot. Header: `♪ techno`, the three moods as
+  stations (the one on air is a button), hide. Row 1: play, the track, where
+  its name comes from (`sourceOf`: a starter track, named after a commit, ...),
+  and the build as `section ▰▰▰▱▱▱ n/10`. Row 2: `now` + the sounds in plain
+  words (`LAYER_WORDS`), then `next: add the ... ›` and `let it play itself`.
+  Row 3: word knobs (slower 130 faster · calmer busier · new rhythm undo ·
+  save share · other tracks). The grid is unchanged. "dice" is "new rhythm".
+- **One background player for every chat** (Ruslan, 2026-10-03: "persistent
+  between chats ... can we stop it if Claude Code is stopped as well?"). With
+  `ffplay` and `perl` on the machine, `PLAYER_SH` runs ffplay in its own
+  process group (perl setsid) from `~/Library/Caches/techno/`, so it outlives
+  the chat. Its watcher kills ffplay when no Claude Code process is left
+  (`pgrep -f '/MacOS/claude|/share/claude/versions/'`). `$.store.player` holds
+  the pid and the clock; every chat syncs from it every 2 s, so all bars show
+  and control the same music. A change starts the new loop 150 ms ahead, then
+  kills the old group. Without ffplay, each chat plays through `$.audio.play`.
 - **The done card** (Ruslan, 2026-10-03): replay the set, save the set as mp3,
   remix it (dice + 1, step edits cleared, back to the kick), keep, share, new
   track. The set is the state you left each part in, so tweaks and step edits

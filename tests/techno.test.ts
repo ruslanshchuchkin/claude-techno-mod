@@ -11,7 +11,7 @@ const PANE = {
 } as const
 
 // Answers every call the mod makes that the kit does not answer itself
-function stubs(on: any, store: Record<string, unknown> = {}) {
+function stubs(on: any, store: Record<string, unknown> = {}, run?: (argv: string) => unknown) {
   const clock = mock.clock(on)
   mock.store(on, store)
   mock.env(on, { HOME: '/home/test' })
@@ -25,6 +25,8 @@ function stubs(on: any, store: Record<string, unknown> = {}) {
   on('fs.read', () => ({ value: JSON.stringify({ name: 'techno', version: '0.2.0-dev' }) }))
   on('process.run', ($: any, e: any) => {
     const argv = e.argv.join(' ')
+    const own = run?.(argv)
+    if (own) return { value: own }
     if (argv.startsWith('git rev-parse')) return { value: { exitCode: 0, stdout: 'feature/login\n', stderr: '' } }
     if (argv.startsWith('git log')) return { value: { exitCode: 0, stdout: 'fix the flaky test\nadd dark mode\n', stderr: '' } }
     return { value: { exitCode: 0, stdout: '', stderr: '' } }
@@ -129,7 +131,7 @@ test('play is lit first, then NEXT builds the track part by part to the done car
   expect((await ui.find({ key: 'play' }))?.props.variant).toBe('primary')
   await ui.press({ key: 'play' })
   expect((await ui.find({ key: 'do-move' }))?.props.variant).toBe('primary')
-  expect((await ui.find({ key: 'do-move' }))?.props.label).toContain('+ sub bass')
+  expect((await ui.find({ key: 'do-move' }))?.props.label).toContain('next: add the deep bass')
   for (let i = 0; i < PLAN.length; i++) await ui.press({ key: 'do-move' })
   expect(await ui.find({ type: 'Text', text: /Your track is done/ })).toBeDefined()
   expect(await ui.find({ key: 'replay' })).toBeDefined()
@@ -226,10 +228,9 @@ test('three moods, and each one sets the scale with it', async ($, on) => {
   expect(String(r.result)).toContain('mood mysterious')
   expect(String(r.result)).toMatch(/m1e\dk3p0/)
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  await ui.press({ key: 'mood-up' })
-  expect(await ui.find({ type: 'Text', text: 'dark' })).toBeDefined()
-  await ui.press({ key: 'mood-up' })
-  expect(await ui.find({ type: 'Text', text: 'dark' })).toBeDefined()
+  await ui.press({ key: 'mood-dark' })
+  expect((await ui.find({ key: 'mood-dark' }))?.props.plain).toBeUndefined()
+  expect((await ui.find({ key: 'mood-sad' }))?.props.plain).toBe(true)
   await ui.unmount()
   expect((await $.command.run({ command: 'techno', args: 'code' })).text).toMatch(/m0e\dk2p0/)
   // an old code keeps its own mood and scale
@@ -244,15 +245,35 @@ test('the bar follows you into a new chat once you used techno', async ($, on) =
   await ui.unmount()
 })
 
-test('the tip hangs under the current section, and NEXT says what comes next', async ($, on) => {
+test('the top says what plays, where the name comes from, and what comes next', async ($, on) => {
   stubs(on)
   await start($)
-  await $.command.run({ command: 'techno', args: 'ruslan' })
+  await $.command.run({ command: 'techno', args: 'late night deploy' })
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ ...PANE, surface })
     await ui.drawn()
-    expect(await ui.find({ type: 'Text', text: /^↳ / })).toBeDefined()
-    expect((await ui.find({ key: 'do-move' }))?.props.label).toMatch(/^(▸ )?next: \+ sub bass ›$/)
+    expect(await ui.find({ type: 'Text', text: /a starter track/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /^kick$/ })).toBeDefined()
+    expect(await ui.find({ key: 'mood-mysterious' })).toBeDefined()
+    expect((await ui.find({ key: 'do-move' }))?.props.label).toMatch(/^(▸ )?next: add the deep bass ›$/)
+    expect((await ui.find({ key: 'dice' }))?.props.label).toBe('new rhythm')
     await ui.unmount()
   }
+})
+
+test('with ffplay, one background player plays for every chat, and stop kills its group', async ($, on) => {
+  const calls: string[] = []
+  const clock = stubs(on, {}, (argv) => {
+    calls.push(argv)
+    if (argv.includes('command -v ffplay')) return { exitCode: 0, stdout: '/opt/homebrew/bin/ffplay\n/usr/bin/perl\n', stderr: '' }
+    if (argv.includes('POSIX::setsid')) return { exitCode: 0, stdout: '4242\n', stderr: '' }
+    return undefined
+  })
+  await start($)
+  await $.command.run({ command: 'techno', args: 'ruslan' })
+  expect(calls.some((c) => c.includes('POSIX::setsid') && c.includes('player.sh') && c.includes('loop'))).toBe(true)
+  expect(calls.some((c) => c.startsWith('audio'))).toBe(false)
+  await $.command.run({ command: 'techno', args: 'stop' })
+  await clock.advance(10)
+  expect(calls.some((c) => c.includes('kill -TERM') && c.includes('4242'))).toBe(true)
 })

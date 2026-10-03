@@ -22,6 +22,25 @@ const LAYER_COLORS = {
   acid: ['#a6ff6b', '#6fd13a'],
   stab: ['#d0a6ff', '#a274e0'],
 }
+// What each sound is called in the pane, in the order it is listed
+const LAYER_WORDS = { kick: 'kick', bass: 'deep bass', hats: 'hats', rumble: 'rumble', perc: 'percussion', clap: 'clap', stab: 'dub chord', acid: 'acid riff' }
+const hearing = (on) => {
+  const names = Object.keys(LAYER_WORDS).filter((n) => on[n]).map((n) => LAYER_WORDS[n])
+  if (!names.length) return 'silence'
+  return names.length === 1 ? names[0] : names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1]
+}
+
+// Where a track's name comes from, so "late night deploy" is not a mystery:
+// every track grows from a name, and the crate offers names from your project.
+function sourceOf(t) {
+  const is = (it) => normalizeLabel(it.label) === t.phrase
+  const repo = s.repo.find(is)
+  if (repo) return { project: 'named after this project', branch: 'named after your branch', commit: 'named after a commit' }[repo.sub] ?? 'from this project'
+  if (s.saved.some(is)) return 'a track you saved'
+  if (STARTERS.some((p) => normalizeLabel(p) === t.phrase)) return 'a starter track'
+  return 'grown from your words'
+}
+
 const STARTERS = ['late night deploy', 'coffee at 3am', 'merge conflict', 'friday deploy', 'null pointer', 'ship it', 'warehouse 4am', 'rooftop sunrise']
 
 // Module state. The track and your kept tracks live in $.store too.
@@ -52,6 +71,11 @@ const s = {
   used: false,
   barClosed: false,
   barStored: false,
+  // the background player (see PLAYER_SH): its cache dir when ffplay is there, its pid
+  dir: '',
+  pid: 0,
+  playerSeq: 0,
+  syncTimer: null,
   lastPrompt: '',
   you: '',
   said: '',
@@ -101,6 +125,98 @@ const setLength = () => {
   return Math.floor(secs / 60) + ':' + String(secs % 60).padStart(2, '0')
 }
 
+// ---------- the player ----------
+// With ffplay on the machine, one background player serves every chat. It
+// outlives the chat that started it (perl setsid puts it in its own process
+// group), and its watcher stops it once no Claude Code process is left: no
+// desktop chat (.../MacOS/claude) and no terminal CLI (.../share/claude/versions/).
+// Its pid and clock live in $.store ('player'), and every chat syncs from
+// there every 2 s, so every bar shows and controls the same music.
+// Without ffplay, each chat plays its own loop through $.audio.play.
+const PLAYER_SH = [
+  'f="$1"; vol="$2"; mode="$3"',
+  'if [ "$mode" = loop ]; then set -- -loop 0; else set -- -autoexit; fi',
+  'ffplay -nodisp -loglevel quiet -volume "$vol" "$@" "$f" </dev/null >/dev/null 2>&1 &',
+  'p=$!',
+  'while kill -0 $p 2>/dev/null; do',
+  "  pgrep -f '/MacOS/claude|/share/claude/versions/' >/dev/null || { kill $p; exit 0; }",
+  '  sleep 2',
+  'done',
+  '',
+].join('\n')
+// ffplay needs a moment to start; the new loop starts this far ahead to land on the beat
+const PLAYER_LATENCY_MS = 150
+
+async function playerInit($) {
+  try {
+    const home = await $.env.get('HOME')
+    const found = await $.process.run(['sh', '-c', 'command -v ffplay && command -v perl'], { timeoutMs: 5000 })
+    if (!home || found.exitCode !== 0 || !found.stdout.includes('ffplay')) return
+    const dir = home + '/Library/Caches/techno'
+    const w = await $.process.run(['sh', '-c', 'mkdir -p "$1" && cat > "$1/player.sh"', 'sh', dir], { stdin: PLAYER_SH, timeoutMs: 5000 })
+    if (w.exitCode !== 0) return
+    s.dir = dir
+    // a player left from before (Claude quit while it played) is gone or orphaned
+    const p = await $.store.get('player')
+    if (p?.pid) {
+      const alive = await $.process.run(['kill', '-0', String(p.pid)], { timeoutMs: 5000 })
+      if (alive.exitCode !== 0) await $.store.set('player', null)
+    }
+    await syncPlayer($)
+  } catch {
+    s.dir = ''
+  }
+}
+
+async function playerStart($, wav, mode) {
+  s.playerSeq = (s.playerSeq + 1) % 4
+  const file = `${s.dir}/${mode}-${s.playerSeq}.wav`
+  const dec = await $.process.run(['sh', '-c', 'base64 --decode > "$1"', 'sh', file], { stdin: wav.toBase64(), timeoutMs: 30000 })
+  if (dec.exitCode !== 0) throw new Error(dec.stderr.trim() || 'could not write the loop')
+  const run = await $.process.run(
+    ['sh', '-c', 'perl -MPOSIX -e "POSIX::setsid(); exec @ARGV" sh "$1/player.sh" "$2" "$3" "$4" </dev/null >/dev/null 2>&1 & echo $!', 'sh', s.dir, file, String(Math.round(GAIN * 100)), mode],
+    { timeoutMs: 5000 },
+  )
+  const pid = parseInt(run.stdout, 10)
+  if (!pid) throw new Error('the player did not start')
+  return pid
+}
+
+// Kills each player's process group: the watcher and its ffplay.
+async function playerKill($, pids) {
+  const list = [...new Set(pids.filter(Boolean).map(String))]
+  if (!list.length) return
+  await $.process.run(['sh', '-c', 'for p in "$@"; do kill -TERM -- -"$p" 2>/dev/null; kill "$p" 2>/dev/null; done; true', 'sh', ...list], { timeoutMs: 5000 })
+}
+
+// Another chat may have started, changed or stopped the music: follow it.
+async function syncPlayer($) {
+  if (!s.dir) return
+  const p = await $.store.get('player')
+  const now = await $.clock.now()
+  if (p?.once && now > p.endsAt) {
+    if (p.pid === s.pid) { s.pid = 0; s.playing = false; s.replaying = false; await $.store.set('player', null); $.ui.invalidate('ui.render') }
+    return
+  }
+  const pid = p?.pid ?? 0
+  if (pid === s.pid) return
+  s.pid = pid
+  if (!pid) {
+    s.playing = false
+    s.replaying = false
+    cancelAuto()
+  } else {
+    s.playing = true
+    s.replaying = !!p.once
+    s.startedAt = p.startedAt
+    s.loopMs = p.loopMs
+    s.stepMs = p.stepMs
+    const t = p.code ? parseCode(p.code) : null
+    if (t && (!s.track || encodeCode(s.track) !== p.code)) { s.track = t; noteLayers(t); markUsed($) }
+  }
+  $.ui.invalidate('ui.render')
+}
+
 // ---------- audio ----------
 
 async function startAudio($) {
@@ -110,6 +226,7 @@ async function startAudio($) {
   // keep the beat: start the new loop at the same point in the bar
   let offsetMs = 0
   if (s.playing && !s.replaying && s.loopMs > 0) offsetMs = (((now - s.startedAt) % s.loopMs) / s.loopMs) * loopMs
+  if (s.dir) return startPlayer($, audio, now, offsetMs)
   const wav = toWav(audio, offsetMs / 1000)
   const old = s.ctrl
   const ctrl = new AbortController()
@@ -132,12 +249,47 @@ async function startAudio($) {
   $.ui.invalidate('ui.render')
 }
 
+async function startPlayer($, audio, now, offsetMs) {
+  const loopMs = audio.seconds * 1000
+  const lead = s.playing && !s.replaying ? PLAYER_LATENCY_MS : 0
+  const wav = toWav(audio, ((offsetMs + lead) % loopMs) / 1000)
+  const before = await $.store.get('player')
+  let pid
+  try {
+    pid = await playerStart($, wav, 'loop')
+  } catch (err) {
+    s.status = 'audio failed: ' + String(err?.message ?? err)
+    $.ui.invalidate('ui.render')
+    return
+  }
+  // the new loop starts first, then the old one stops: no gap on the beat
+  await playerKill($, [s.pid, before?.pid].filter((x) => x && x !== pid))
+  s.pid = pid
+  s.playing = true
+  s.replaying = false
+  s.loopMs = loopMs
+  s.stepMs = audio.stepSeconds * 1000
+  s.startedAt = now - offsetMs
+  await $.store.set('player', { pid, startedAt: s.startedAt, loopMs, stepMs: s.stepMs, code: encodeCode(s.track) })
+  await scheduleAuto($)
+  $.ui.invalidate('ui.render')
+}
+
 function stopAudio($) {
   if (s.ctrl) s.ctrl.abort()
   s.ctrl = null
   s.playing = false
   s.replaying = false
   cancelAuto()
+  if (s.dir) {
+    const pid = s.pid
+    s.pid = 0
+    void (async () => {
+      const p = await $.store.get('player')
+      await $.store.set('player', null)
+      await playerKill($, [pid, p?.pid])
+    })().catch(() => {})
+  }
   $.ui.invalidate('ui.render')
 }
 
@@ -209,6 +361,24 @@ async function replay($) {
   $.ui.invalidate('ui.render')
   const audio = renderSet(setTracks())
   const wav = toWav(audio)
+  if (s.dir) {
+    try {
+      const before = await $.store.get('player')
+      const pid = await playerStart($, wav, 'once')
+      await playerKill($, [s.pid, before?.pid].filter((x) => x && x !== pid))
+      const now = await $.clock.now()
+      s.pid = pid
+      s.playing = true
+      s.replaying = true
+      s.status = ''
+      cancelAuto()
+      await $.store.set('player', { pid, once: true, startedAt: now, endsAt: now + audio.seconds * 1000, loopMs: 0, stepMs: 0, code: encodeCode(s.track) })
+    } catch (err) {
+      s.status = 'audio failed: ' + String(err?.message ?? err)
+    }
+    $.ui.invalidate('ui.render')
+    return
+  }
   if (s.ctrl) s.ctrl.abort()
   const ctrl = new AbortController()
   s.ctrl = ctrl
@@ -484,6 +654,8 @@ export function register(on) {
     if (s.track) s.screen = 'deck'
     if (s.track && (await $.store.get('bar')) === true) { s.used = true; s.barStored = true }
     await loadRepo($)
+    await playerInit($)
+    if (s.dir && !s.syncTimer) s.syncTimer = $.clock.every(2000, () => { syncPlayer($).catch(() => {}) })
     await $.tool.register({
       name: 'jam',
       description:
@@ -604,6 +776,8 @@ export function register(on) {
       desc: t ? describe(t) : '',
       key: t ? keyName(t) : '',
       mood: t ? moodName(t) : '',
+      source: t ? sourceOf(t) : '',
+      hearing: t ? hearing(layersOn) : '',
       playing: s.playing,
       replaying: s.replaying,
       auto: s.auto,
@@ -623,6 +797,7 @@ export function register(on) {
       play: () => startAudio($),
       stop: () => stopAudio($),
       energy: (d) => change($, (x) => { x.energy = Math.max(0, Math.min(4, x.energy + d)) }),
+      setMood: (name) => change($, (x) => { const v = VIBES.find((it) => it.name === name); if (v) { x.mood = v.mood; x.scale = v.scale } }),
       mood: (d) => change($, (x) => { const v = VIBES[Math.max(0, Math.min(VIBES.length - 1, vibeOf(x) + d))]; x.mood = v.mood; x.scale = v.scale }),
       bpm: (d) => change($, (x) => { x.bpm = Math.max(BPM_MIN, Math.min(BPM_MAX, x.bpm + d)) }),
       dice: () => change($, (x) => { x.dice = (x.dice + 1) % 1000 }),
@@ -664,7 +839,11 @@ export function register(on) {
     return next(e)
   })
 
+  // The background player plays on for the other chats; its watcher stops it
+  // when the last Claude Code process ends. The per-chat player stops here.
   on('session.end', async ($, e, next) => {
+    if (s.syncTimer) s.syncTimer.cancel()
+    s.syncTimer = null
     if (s.ctrl) s.ctrl.abort()
     s.ctrl = null
     s.playing = false

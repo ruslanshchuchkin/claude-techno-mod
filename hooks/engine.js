@@ -52,15 +52,15 @@ export const SECTIONS = ['intro', 'groove', 'build', 'peak', 'break', 'drop', 'o
 // a grid click can still bring it in).
 export const PLAN = [
   { section: 'intro', energy: 0, layers: ['kick'], go: 'start', tip: 'Just the kick' },
-  { section: 'intro', energy: 0, layers: ['kick', 'bass'], go: '+ sub bass', tip: 'Kick and a deep sub' },
-  { section: 'groove', energy: 1, layers: ['kick', 'bass', 'hats'], go: '+ hats', tip: 'Offbeat hats, the groove rolls' },
-  { section: 'groove', energy: 1, layers: ['kick', 'bass', 'hats', 'rumble'], go: '+ rumble', tip: 'The rumble fills the low end' },
-  { section: 'build', energy: 2, layers: ['kick', 'bass', 'hats', 'rumble', 'perc'], go: '+ percussion', tip: 'Percussion, still no clap' },
-  { section: 'build', energy: 2, layers: ['kick', 'bass', 'hats', 'rumble', 'perc', 'clap'], go: '+ clap', tip: 'The clap on 2 and 4' },
-  { section: 'peak', energy: 3, layers: ['kick', 'bass', 'hats', 'rumble', 'perc', 'clap', 'stab'], go: '+ dub chord', tip: 'A dub chord echoes on top' },
-  { section: 'break', energy: 2, layers: ['hats', 'perc', 'stab'], go: 'breakdown', tip: 'The kick drops out. Breathe' },
-  { section: 'drop', energy: 3, layers: ['kick', 'bass', 'hats', 'rumble', 'perc', 'clap', 'stab'], go: 'drop it', tip: 'The low end slams back in' },
-  { section: 'outro', energy: 1, layers: ['kick', 'bass', 'hats', 'rumble'], go: 'outro', tip: 'Back to kick, sub and rumble' },
+  { section: 'intro', energy: 0, layers: ['kick', 'bass'], go: 'add the deep bass', tip: 'Kick and a deep sub' },
+  { section: 'groove', energy: 1, layers: ['kick', 'bass', 'hats'], go: 'add hats', tip: 'Offbeat hats, the groove rolls' },
+  { section: 'groove', energy: 1, layers: ['kick', 'bass', 'hats', 'rumble'], go: 'add the rumble', tip: 'The rumble fills the low end' },
+  { section: 'build', energy: 2, layers: ['kick', 'bass', 'hats', 'rumble', 'perc'], go: 'add percussion', tip: 'Percussion, still no clap' },
+  { section: 'build', energy: 2, layers: ['kick', 'bass', 'hats', 'rumble', 'perc', 'clap'], go: 'add the clap', tip: 'The clap on 2 and 4' },
+  { section: 'peak', energy: 3, layers: ['kick', 'bass', 'hats', 'rumble', 'perc', 'clap', 'stab'], go: 'add the dub chord', tip: 'A dub chord echoes on top' },
+  { section: 'break', energy: 2, layers: ['hats', 'perc', 'stab'], go: 'the breakdown', tip: 'The kick drops out. Breathe' },
+  { section: 'drop', energy: 3, layers: ['kick', 'bass', 'hats', 'rumble', 'perc', 'clap', 'stab'], go: 'the drop', tip: 'The low end slams back in' },
+  { section: 'outro', energy: 1, layers: ['kick', 'bass', 'hats', 'rumble'], go: 'the outro', tip: 'Back to kick, sub and rumble' },
 ]
 
 // ---------- seed helpers ----------

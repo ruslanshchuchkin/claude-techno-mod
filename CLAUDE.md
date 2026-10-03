@@ -12,7 +12,10 @@ Needs Claude Code v2.1.287 or later (built and checked on v2.1.288).
 |---|---|
 | `.claude-plugin/plugin.json` | Plugin manifest. Name `techno`. |
 | `hooks/hooks.json` | Points to the hooks module. |
-| `hooks/register.js` | The mod: `/techno` command, `jam` tool, the pane, audio, save, share. |
+| `hooks/register.js` | The mod: state, `/techno` command, `jam` tool, audio, save, share, click handlers. Every `$` call lives here (the validator refuses `$` passed to imported files). |
+| `hooks/views.js` | The pane's screens as pure functions of `(ui, vm, act)`: layouts A radio, B rooms, C crate. |
+| `hooks/coach.js` | The coach: one suggested next move (play, build, break, drop, dice, keep, share). Its `key` names the button that is drawn as `variant: 'primary'`. |
+| `hooks/grid.client.js` | A `Client` surface module: the step grid with its own playhead clock. A click on a row posts `{ toggle: layer }` to `ui.message`. |
 | `hooks/engine.js` | The synth. Plain JS with no Node or browser APIs, so it also runs in node and in a page (a future web player). |
 | `scripts/render.mjs` | Render a phrase or code to a WAV from the shell: `node scripts/render.mjs "phrase" out.wav [repeats]`. |
 | `scripts/smoke.mjs` | Runs `register.js` in node against a fake `$`. Fast check without a session. |
@@ -30,6 +33,14 @@ Needs Claude Code v2.1.287 or later (built and checked on v2.1.288).
   the same audio on any machine. `s` saves one minute as mp3 to `~/Music/techno/`
   (ffmpeg), or a wav when ffmpeg is missing.
 
+- **App, not a command** (Ruslan, 2026-10-03: "more like an APP, click around,
+  select track, highlight what to click"). Three layouts behind a dev-only
+  switcher (shown when the plugin is not loaded from `~/.claude/plugins/cache/`):
+  A radio (tabs, station dial, next-move card), B rooms (room dropdown, mixer
+  strip, set timeline), C crate (tracks from the session's repo, then a deck).
+  Seeds: A `kYrmU3f8zfymhTS`, B `Y0ptSxD7G5UC9Fk`, C `3KCbYODsGTY3uHP`.
+  **Pending: Ruslan picks one.** Then delete the other two and the switcher.
+
 ## Share code format
 
 `<phrase-with-hyphens>@<bpm>m<mood>e<energy>[d<dice>][s<swing>][t<transpose>][+layer|-layer...]`
@@ -41,7 +52,9 @@ Do not change the meaning of an existing field: old codes must keep playing the 
 
 ## Engine notes
 
-- 8 bars, 44.1 kHz stereo, about 15 s. Renders in about 0.4 s in node.
+- 8 bars, 44.1 kHz stereo, about 15 s. Renders in about 0.2 s in node. Each
+  drum hit renders once per track (`template` + `stamp`); keep it that way,
+  since every click re-renders.
 - Reverb and delay tails fold back onto the start, so the loop has no seam.
 - `toWav(audio, startSeconds)` rotates the loop. The mod uses it to keep the
   beat when a change lands mid-loop.
@@ -62,5 +75,10 @@ Do not change the meaning of an existing field: old codes must keep playing the 
   is v2.1.287 or later.
 - "hooks modules are turned off ... rollout switch was saved off" means the
   CLI has not started once while signed in. Run `claude`, then `/login`.
+- Desktop Code tab runs its own bundled Claude Code (2.1.286 on 2026-10-03).
+  Mods load there too; the tests pass on that binary:
+  `~/Library/Application Support/Claude/claude-code/<version>/<hash>/claude.app/Contents/MacOS/claude plugin test`.
+- `screencapture` from a session shows only the wallpaper (no Screen Recording
+  permission), so the desktop pane can't be captured from here. Ask Ruslan.
 - `$.fs.write` writes text only. `save()` pipes base64 through
   `base64 --decode` with `$.process.run` stdin to write the WAV.

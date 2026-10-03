@@ -1,10 +1,9 @@
-// The pane's screens. Pure functions: they get the element table (`ui`), a
-// view model (`vm`) and the click handlers (`act`), and return a tree. No mods
-// API here; register.js owns state and the calls.
+// The app's screens, drawn in the band above the chat box. Pure functions:
+// they get the element table (`ui`), a view model (`vm`) and the click
+// handlers (`act`), and return a tree. No mods API here; register.js owns
+// state and the calls.
 import { PARTS } from './coach.js'
 import { LAYERS, MOODS, ENERGIES } from './engine.js'
-
-const SP = (ui) => ui.Text({ children: [' '] })
 
 // A button that the coach can highlight: the suggested one is the primary
 // button, with a marker in the terminal where primary is only a color.
@@ -19,54 +18,43 @@ function btn(ui, vm, key, label, onPress, extra = {}) {
   })
 }
 
-const row = (ui, children, extra = {}) => ui.Box({ flexDirection: 'row', flexWrap: 'wrap', columnGap: 1, rowGap: 0, children, ...extra })
+const row = (ui, children, extra = {}) => ui.Box({ flexDirection: 'row', flexWrap: 'wrap', columnGap: 1, alignItems: 'center', children: children.filter(Boolean), ...extra })
+const col = (ui, children, extra = {}) => ui.Box({ flexDirection: 'column', children: children.filter(Boolean), ...extra })
+const dim = (ui, text, extra = {}) => ui.Text({ dimColor: true, children: [text], ...extra })
 
-function switcher(ui, vm, act) {
-  if (!vm.dev) return null
+function header(ui, vm, act, middle) {
   const opt = (id, name) => ui.Button({ key: 'layout-' + id, label: id + ' ' + name, plain: true, dimColor: vm.layout !== id, onPress: () => act.layout(id) })
   return ui.Box({
     flexDirection: 'row',
-    columnGap: 2,
-    marginBottom: 1,
-    children: [ui.Text({ dimColor: true, children: ['layout'] }), opt('A', 'radio'), opt('B', 'rooms'), opt('C', 'crate')],
-  })
-}
-
-function title(ui, vm) {
-  if (!vm.track) return ui.Text({ dimColor: true, children: ['no track yet'] })
-  return ui.Box({
-    flexDirection: 'column',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     children: [
-      ui.Text({ bold: true, wrap: 'wrap', children: [vm.track.phrase] }),
-      ui.Text({ dimColor: true, wrap: 'wrap', children: [vm.desc] }),
+      row(ui, [ui.Text({ bold: true, children: ['♪ techno'] }), ...(middle ?? [])], { columnGap: 2 }),
+      row(ui, [...(vm.dev ? [dim(ui, 'layout'), opt('A', 'radio'), opt('B', 'rooms'), opt('C', 'crate')] : []), ui.Button({ key: 'close', label: 'hide', role: 'dismiss', plain: true, dimColor: true, onPress: () => act.close() })], { columnGap: 2 }),
     ],
   })
 }
 
-function playButton(ui, vm, act, big = false) {
-  const label = vm.playing ? '■ stop' : big ? '▶  play' : '▶ play'
-  return btn(ui, vm, 'play', label, () => (vm.playing ? act.stop() : act.play()), { hotkey: 'p' })
+function nowPlaying(ui, vm) {
+  if (!vm.track) return dim(ui, 'no track yet')
+  return row(ui, [ui.Text({ bold: true, wrap: 'truncate-end', children: [vm.track.phrase] }), dim(ui, '· ' + vm.desc, { wrap: 'truncate-end' })])
 }
 
-function stepper(ui, vm, act, name, value, down, up) {
-  return row(ui, [
-    ui.Text({ dimColor: true, children: [name.padEnd(7)] }),
-    btn(ui, vm, name + '-down', '−', down),
-    ui.Text({ children: [String(value).padEnd(9)] }),
-    btn(ui, vm, name + '-up', '+', up),
-  ], { alignItems: 'center' })
+function playButton(ui, vm, act) {
+  return btn(ui, vm, 'play', vm.playing ? '■ stop' : '▶ play', () => (vm.playing ? act.stop() : act.play()), { hotkey: 'p' })
+}
+
+function stepper(ui, vm, name, value, down, up) {
+  return row(ui, [dim(ui, name), btn(ui, vm, name + '-down', '−', down), ui.Text({ children: [value] }), btn(ui, vm, name + '-up', '+', up)])
 }
 
 function controls(ui, vm, act) {
   const t = vm.track
-  return ui.Box({
-    flexDirection: 'column',
-    children: [
-      stepper(ui, vm, act, 'energy', ENERGIES[t.energy], () => act.energy(-1), () => act.energy(1)),
-      stepper(ui, vm, act, 'mood', MOODS[t.mood], () => act.mood(-1), () => act.mood(1)),
-      stepper(ui, vm, act, 'tempo', t.bpm + ' bpm', () => act.bpm(-2), () => act.bpm(2)),
-    ],
-  })
+  return row(ui, [
+    stepper(ui, vm, 'energy', ENERGIES[t.energy], () => act.energy(-1), () => act.energy(1)),
+    stepper(ui, vm, 'mood', MOODS[t.mood], () => act.mood(-1), () => act.mood(1)),
+    stepper(ui, vm, 'tempo', String(t.bpm), () => act.bpm(-2), () => act.bpm(2)),
+  ], { columnGap: 3 })
 }
 
 function layerChips(ui, vm, act) {
@@ -77,39 +65,19 @@ function timeline(ui, vm) {
   const cur = PARTS.indexOf(vm.move?.part ?? 'intro')
   const parts = []
   PARTS.forEach((p, i) => {
-    if (i) parts.push(ui.Text({ key: 'sep' + i, dimColor: true, children: [' ─ '] }))
+    if (i) parts.push(ui.Text({ key: 'sep' + i, dimColor: true, children: ['─'] }))
     parts.push(ui.Text({ key: 'part-' + p, bold: i === cur, inverse: i === cur, dimColor: i > cur, children: [i === cur ? ' ' + p + ' ' : p] }))
   })
-  return ui.Box({ flexDirection: 'row', children: parts })
+  return ui.Box({ flexDirection: 'row', columnGap: 1, children: parts })
 }
 
-function tip(ui, vm) {
-  return ui.Text({ wrap: 'wrap', children: ['next › ' + vm.move.tip] })
-}
-
-function moveCard(ui, vm, act) {
-  return ui.Box({
-    flexDirection: 'column',
-    borderStyle: 'round',
-    paddingX: 1,
-    children: [
-      ui.Text({ dimColor: true, children: ['next move · ' + (vm.move.part ?? '')] }),
-      ui.Text({ bold: true, wrap: 'wrap', children: [vm.move.tip] }),
-      ...(vm.moveLabel ? [ui.Button({ key: 'do-move', label: vm.moveLabel, variant: 'primary', onPress: () => act.doMove() })] : []),
-    ],
-  })
-}
-
-function talk(ui, vm) {
-  const out = []
-  if (vm.you) out.push(ui.Text({ key: 'you', dimColor: true, wrap: 'truncate-end', children: ['you    › ' + vm.you] }))
-  if (vm.said) out.push(ui.Text({ key: 'said', wrap: 'truncate-end', children: ['claude › ' + vm.said] }))
-  if (!out.length) out.push(ui.Text({ key: 'hint', dimColor: true, wrap: 'wrap', children: ['You can also ask Claude in chat: "darker", "faster", "more acid".'] }))
-  return ui.Box({ flexDirection: 'column', children: out })
-}
-
-function status(ui, vm) {
-  return vm.status ? ui.Text({ key: 'status', dimColor: true, wrap: 'wrap', children: [vm.status] }) : null
+// The coach's line: what to do next, and a button that does it.
+function nextLine(ui, vm, act) {
+  return row(ui, [
+    dim(ui, 'next ›'),
+    ui.Text({ wrap: 'truncate-end', children: [vm.move.tip] }),
+    vm.moveLabel ? ui.Button({ key: 'do-move', label: vm.moveLabel, variant: 'primary', onPress: () => act.doMove() }) : null,
+  ])
 }
 
 function actions(ui, vm, act) {
@@ -121,146 +89,117 @@ function actions(ui, vm, act) {
   ])
 }
 
-function shareCard(ui, vm, act) {
+function talkLine(ui, vm) {
+  if (vm.said) return row(ui, [vm.you ? dim(ui, 'you: ' + vm.you, { wrap: 'truncate-end' }) : null, ui.Text({ wrap: 'truncate-end', children: ['claude › ' + vm.said] })], { columnGap: 2 })
+  return dim(ui, 'or ask Claude in chat: "darker", "faster", "more acid"', { wrap: 'truncate-end' })
+}
+
+function shareBlock(ui, vm, act) {
   return ui.Box({
     flexDirection: 'column',
+    borderStyle: 'round',
+    paddingX: 1,
     children: [
-      ui.Box({
-        flexDirection: 'column',
-        borderStyle: 'double',
-        paddingX: 1,
-        children: [
-          ui.Text({ bold: true, wrap: 'wrap', children: [vm.track.phrase.toUpperCase()] }),
-          ui.Text({ wrap: 'wrap', children: [vm.desc.toUpperCase()] }),
-          SP(ui),
-          ui.Text({ dimColor: true, children: ['play it in Claude Code:'] }),
-          ui.Text({ color: 'green', wrap: 'wrap', children: [vm.shareLine] }),
-        ],
-      }),
+      row(ui, [ui.Text({ bold: true, children: [vm.track.phrase.toUpperCase()] }), dim(ui, '· ' + vm.desc)]),
+      row(ui, [dim(ui, 'play it in Claude Code:'), ui.Text({ color: 'green', wrap: 'wrap', children: [vm.shareLine] })]),
       row(ui, [
         ui.Button({ key: 'copy', label: 'copy play line', variant: 'primary', onPress: () => act.copy() }),
         ui.Button({ key: 'save', label: '↓ save mp3', onPress: () => act.save() }),
-        ...(vm.layout !== 'A' ? [ui.Button({ key: 'share-close', label: 'close', plain: true, dimColor: true, onPress: () => act.closeShare() })] : []),
-      ], { marginTop: 1 }),
+        ui.Button({ key: 'share-close', label: 'done', plain: true, dimColor: true, onPress: () => act.closeShare() }),
+      ]),
     ],
   })
 }
 
-function trackButton(ui, vm, act, item) {
-  const isCurrent = vm.track && vm.code === item.code
-  return ui.Box({
-    key: 'tr-' + item.code,
-    flexDirection: 'row',
-    columnGap: 1,
-    children: [
-      ui.Button({ key: 'pick-' + item.code, label: (isCurrent ? '▶ ' : '  ') + item.label, plain: true, dimColor: !isCurrent, onPress: () => act.pick(item.code) }),
-      ui.Text({ dimColor: true, wrap: 'truncate-end', children: [item.sub] }),
-    ],
-  })
+function trackPicker(ui, vm, act, label) {
+  return ui.Select({ key: 'track', label, options: vm.pickOptions, value: vm.code || vm.pickOptions[0].value, onSelect: (v) => act.pick(v) })
 }
 
-function section(ui, name, children) {
-  return ui.Box({ flexDirection: 'column', marginBottom: 1, children: [ui.Text({ dimColor: true, children: [name] }), ...children] })
+function statusLine(ui, vm) {
+  return vm.status ? dim(ui, vm.status, { key: 'status', wrap: 'truncate-end' }) : null
 }
 
-// ---------- A · radio: tabs, a station dial, a next-move card ----------
+// ---------- A · radio: tabs, a station dial, the next move ----------
 
 function layoutA(ui, vm, act) {
   const tab = (id, label) => ui.Button({ key: 'tab-' + id, label, plain: true, dimColor: vm.tab !== id, onPress: () => act.tab(id) })
+  const tabs = [tab('tracks', 'tracks'), tab('mix', 'mix'), tab('share', 'share')]
   let body
   if (!vm.track || vm.tab === 'tracks') {
     body = [
       row(ui, [
         ui.Button({ key: 'radio-prev', label: '◀', onPress: () => act.radio(-1) }),
-        ui.Text({ dimColor: true, children: [` station ${vm.radio.index + 1}/${vm.radio.total} `] }),
+        dim(ui, `station ${vm.radio.index + 1}/${vm.radio.total}`),
         ui.Button({ key: 'radio-next', label: '▶', onPress: () => act.radio(1) }),
-      ], { alignItems: 'center' }),
-      ui.Text({ dimColor: true, children: [vm.radio.from] }),
-      SP(ui),
-      title(ui, vm),
-      SP(ui),
-      ...(vm.track ? [row(ui, [playButton(ui, vm, act, true), btn(ui, vm, 'keep', vm.isKept ? '♥ kept' : '♡ keep', () => act.keep())]), SP(ui), vm.gridEl, SP(ui), moveCard(ui, vm, act)] : []),
+        dim(ui, vm.radio.from),
+      ]),
+      vm.track ? row(ui, [playButton(ui, vm, act), nowPlaying(ui, vm)]) : null,
+      vm.track ? vm.gridEl : null,
     ]
   } else if (vm.tab === 'mix') {
-    body = [title(ui, vm), SP(ui), row(ui, [playButton(ui, vm, act), btn(ui, vm, 'dice', '⚄ dice', () => act.dice()), btn(ui, vm, 'undo', '↶ undo', () => act.undo())]), SP(ui), controls(ui, vm, act), SP(ui), layerChips(ui, vm, act), SP(ui), vm.gridEl, SP(ui), moveCard(ui, vm, act)]
+    body = [row(ui, [playButton(ui, vm, act), nowPlaying(ui, vm)]), layerChips(ui, vm, act), controls(ui, vm, act), vm.gridEl]
   } else {
-    body = [shareCard(ui, vm, act)]
+    body = [shareBlock(ui, vm, act)]
   }
-  return [
-    ui.Box({ flexDirection: 'row', columnGap: 3, marginBottom: 1, children: [tab('tracks', '1 tracks'), tab('mix', '2 mix'), tab('share', '3 share')] }),
-    ...body,
-    SP(ui),
-    talk(ui, vm),
-  ]
+  return [header(ui, vm, act, tabs), ...body, vm.track ? nextLine(ui, vm, act) : null]
 }
 
-// ---------- B · rooms: player first, a room picker, a mixer strip, a set timeline ----------
+// ---------- B · rooms: room picker, mixer strip, set timeline ----------
 
 function layoutB(ui, vm, act) {
-  const picker = ui.Select({ key: 'room', label: 'room', options: vm.roomOptions, value: vm.roomValue, onSelect: (v) => act.pick(v) })
-  if (!vm.track) return [picker, SP(ui), ui.Text({ dimColor: true, children: ['Pick a room to start.'] })]
+  if (!vm.track) return [header(ui, vm, act), trackPicker(ui, vm, act, 'room')]
   return [
-    picker,
-    SP(ui),
-    title(ui, vm),
-    SP(ui),
-    row(ui, [playButton(ui, vm, act), btn(ui, vm, 'dice', '⚄ dice', () => act.dice()), btn(ui, vm, 'undo', '↶ undo', () => act.undo()), btn(ui, vm, 'keep', vm.isKept ? '♥ kept' : '♡ keep', () => act.keep()), btn(ui, vm, 'share', '↗ share', () => act.share())]),
-    SP(ui),
-    timeline(ui, vm),
-    tip(ui, vm),
-    SP(ui),
-    ui.Text({ dimColor: true, children: ['mixer'] }),
+    header(ui, vm, act, [trackPicker(ui, vm, act, 'room')]),
+    row(ui, [playButton(ui, vm, act), nowPlaying(ui, vm)]),
+    row(ui, [timeline(ui, vm), dim(ui, '›'), ui.Text({ wrap: 'truncate-end', children: [vm.move.tip] })], { columnGap: 2 }),
     layerChips(ui, vm, act),
-    SP(ui),
-    controls(ui, vm, act),
-    SP(ui),
+    row(ui, [controls(ui, vm, act), actions(ui, vm, act)], { columnGap: 3 }),
     vm.gridEl,
-    ...(vm.showShare ? [SP(ui), shareCard(ui, vm, act)] : []),
-    SP(ui),
-    talk(ui, vm),
+    vm.showShare ? shareBlock(ui, vm, act) : talkLine(ui, vm),
   ]
 }
 
 // ---------- C · crate: tracks from your repo, then a deck ----------
 
+function crateRow(ui, vm, act, name, items) {
+  if (!items.length) return null
+  return row(ui, [dim(ui, name.padEnd(12)), ...items.map((it) => ui.Button({ key: 'pick-' + it.code, label: (vm.code === it.code ? '▶ ' : '') + it.label, plain: true, dimColor: vm.code !== it.code, onPress: () => act.pick(it.code) }))], { columnGap: 2 })
+}
+
 function layoutC(ui, vm, act) {
   if (vm.screen === 'crate' || !vm.track) {
     return [
-      ui.Text({ bold: true, children: ['pick a track'] }),
-      SP(ui),
-      ...(vm.crate.repo.length ? [section(ui, 'from your repo · ' + vm.crate.repoName, vm.crate.repo.map((it) => trackButton(ui, vm, act, it)))] : []),
-      ...(vm.crate.saved.length ? [section(ui, 'your tracks', vm.crate.saved.map((it) => trackButton(ui, vm, act, it)))] : []),
-      section(ui, 'starters', vm.crate.starters.map((it) => trackButton(ui, vm, act, it))),
+      header(ui, vm, act, [dim(ui, 'pick a track')]),
+      crateRow(ui, vm, act, 'your repo', vm.crate.repo),
+      crateRow(ui, vm, act, 'kept', vm.crate.saved),
+      crateRow(ui, vm, act, 'starters', vm.crate.starters),
       ui.Input({ key: 'phrase', label: 'or type a phrase', placeholder: 'late night deploy', value: '', submitLabel: 'play', onSubmit: (v) => act.phrase(v) }),
     ]
   }
   return [
-    ui.Button({ key: 'back', label: '◂ crate', plain: true, dimColor: true, onPress: () => act.screen('crate') }),
-    SP(ui),
-    ui.Box({
-      flexDirection: 'column',
-      borderStyle: 'round',
-      paddingX: 1,
-      children: [title(ui, vm), SP(ui), playButton(ui, vm, act, true)],
-    }),
-    SP(ui),
-    timeline(ui, vm),
-    tip(ui, vm),
-    SP(ui),
+    header(ui, vm, act, [ui.Button({ key: 'back', label: '◂ crate', plain: true, dimColor: true, onPress: () => act.screen('crate') })]),
+    row(ui, [playButton(ui, vm, act), nowPlaying(ui, vm)]),
+    row(ui, [timeline(ui, vm)], { columnGap: 2 }),
+    nextLine(ui, vm, act),
     layerChips(ui, vm, act),
-    SP(ui),
-    controls(ui, vm, act),
-    SP(ui),
+    row(ui, [controls(ui, vm, act), actions(ui, vm, act)], { columnGap: 3 }),
     vm.gridEl,
-    SP(ui),
-    actions(ui, vm, act),
-    ...(vm.showShare ? [SP(ui), shareCard(ui, vm, act)] : []),
-    SP(ui),
-    talk(ui, vm),
+    vm.showShare ? shareBlock(ui, vm, act) : talkLine(ui, vm),
   ]
 }
 
-export function paneView(ui, vm, act) {
+export function appView(ui, vm, act) {
   const body = vm.layout === 'A' ? layoutA(ui, vm, act) : vm.layout === 'B' ? layoutB(ui, vm, act) : layoutC(ui, vm, act)
-  return ui.Box({ flexDirection: 'column', children: [switcher(ui, vm, act), ...body, status(ui, vm)].filter(Boolean) })
+  return col(ui, [...body, statusLine(ui, vm)], { borderStyle: 'round', paddingX: 1 })
+}
+
+// One line above the chat box while music plays and the app is hidden.
+export function miniView(ui, vm, act) {
+  return row(ui, [
+    ui.Text({ bold: true, children: ['♪'] }),
+    ui.Button({ key: 'mini-stop', label: '■ stop', plain: true, onPress: () => act.stop() }),
+    ui.Text({ wrap: 'truncate-end', children: [vm.track.phrase] }),
+    dim(ui, vm.track.bpm + ' bpm'),
+    ui.Button({ key: 'mini-open', label: 'open techno', plain: true, dimColor: true, onPress: () => act.open() }),
+  ], { columnGap: 2 })
 }

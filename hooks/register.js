@@ -8,9 +8,8 @@
 // /techno stop | save | code
 import { trackFor, cleanTrack, parseCode, encodeCode, describe, render, toWav, grid, activeLayers, LAYERS, MOODS, ENERGIES, BPM_MIN, BPM_MAX } from './engine.js'
 import { nextMove } from './coach.js'
-import { paneView } from './views.js'
+import { appView, miniView } from './views.js'
 
-const PANE = 'techno'
 const TOOL = 'mcp__techno__jam'
 const GAIN = 0.7
 const LAYER_COLORS = { kick: 'red', bass: 'yellow', hats: 'cyan', clap: 'magenta', perc: 'blue', acid: 'green', stab: 'magenta' }
@@ -218,10 +217,26 @@ async function copyShare($) {
   $.ui.invalidate('ui.render')
 }
 
-async function openPane($) {
+// The app lives in the band above the chat box; these show and hide it.
+function openApp($) {
   s.isOpen = true
-  await $.ui.open({ id: PANE, title: 'techno', focus: true, columns: 60 })
   $.ui.invalidate('ui.render')
+}
+
+function hideApp($) {
+  s.isOpen = false
+  $.ui.invalidate('ui.render')
+}
+
+// The layout switcher is a dev control: it shows only while plugin.json's
+// version ends in "-dev".
+async function readDev($) {
+  try {
+    const manifest = JSON.parse(await $.fs.read($.plugin.root + '/.claude-plugin/plugin.json'))
+    return String(manifest.version ?? '').endsWith('-dev')
+  } catch {
+    return false
+  }
 }
 
 // Reads the session's repo: branch, recent commit subjects, project name.
@@ -298,7 +313,7 @@ async function doMove($, id) {
 
 export function register(on) {
   on('session.start', async ($, e, next) => {
-    s.isDev = !$.plugin.root.includes('/plugins/cache/')
+    s.isDev = await readDev($)
     const saved = await $.store.get('track')
     if (saved && typeof saved === 'object') s.track = cleanTrack(saved)
     const kept = await $.store.get('saved')
@@ -346,7 +361,8 @@ export function register(on) {
     if (word === 'code') return { text: s.track ? shareLine(s.track) : 'No track yet. Start with /techno <phrase>.' }
     if (word === 'play' && s.track) await startAudio($)
     else if (arg) await pick($, arg)
-    await openPane($)
+    else if (s.isOpen) { hideApp($); return {} }
+    openApp($)
     return {}
   })
 
@@ -365,8 +381,7 @@ export function register(on) {
     s.you = s.lastPrompt
     s.said = (e.note && String(e.note).slice(0, 80)) || diffWords(from, t)
     s.screen = 'deck'
-    if (!s.isOpen) await openPane($)
-    $.ui.invalidate('ui.render')
+    openApp($)
     return { result: `Now playing: "${t.phrase}", ${describe(t)}. Changed: ${diffWords(from, t)}. Share line: ${shareLine(t)}` }
   })
 
@@ -378,8 +393,10 @@ export function register(on) {
     return next({ ...e, context: [...(e.context ?? []), note] })
   })
 
-  on('ui.render', { component: 'Pane' }, async ($, e, next) => {
-    if (e.requestId !== PANE) return next(e)
+  // The app, drawn in the band above the chat box. Hidden: a one-line player
+  // while music plays, otherwise nothing.
+  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+    if (!s.isOpen && !(s.playing && s.track)) return next(e)
     const ui = $.ui.resolve(e)
     const t = s.track
     const now = await $.clock.now()
@@ -410,8 +427,7 @@ export function register(on) {
       said: s.said,
       status: s.status,
       radio: { index: list.indexOf(station), total: list.length, from: station?.from ?? '' },
-      roomOptions: [...(t ? [{ value: code, label: t.phrase }] : []), ...ROOMS.map(([name]) => ({ value: roomCode(name), label: name })), ...s.saved.map((it) => ({ value: it.code, label: '♥ ' + it.label }))].filter((o, i, all) => all.findIndex((x) => x.value === o.value) === i),
-      roomValue: code,
+      pickOptions: [...(t ? [{ value: code, label: t.phrase }] : []), ...ROOMS.map(([name]) => ({ value: roomCode(name), label: name })), ...s.saved.map((it) => ({ value: it.code, label: '♥ ' + it.label }))].filter((o, i, all) => all.findIndex((x) => x.value === o.value) === i),
       crate: { repo: s.repo, repoName: s.repoName, saved: s.saved, starters: STARTERS.map((p) => item(p, describe(trackFor(p)))) },
       gridEl: t ? ui.Client({ key: 'grid', module: './grid.client.js', props: { rows, step, stepMs: s.stepMs || 115, playing: s.playing, stamp: s.startedAt } }) : ui.Text({ children: [' '] }),
     }
@@ -442,8 +458,11 @@ export function register(on) {
       screen: (id) => { s.screen = id; redraw() },
       layout: async (id) => { s.layout = id; redraw(); await $.store.set('layout', id) },
       doMove: () => doMove($, move.id),
+      open: () => openApp($),
+      close: () => hideApp($),
     }
-    return paneView(ui, vm, act)
+    const theirs = await next(e)
+    return ui.Box({ flexDirection: 'column', children: [s.isOpen ? appView(ui, vm, act) : miniView(ui, vm, act), theirs] })
   })
 
   // A click on a grid row mutes or unmutes that layer.
@@ -451,25 +470,6 @@ export function register(on) {
     if (e.element === 'grid' && e.data && typeof e.data.toggle === 'string' && LAYERS.includes(e.data.toggle)) {
       await toggleLayer($, e.data.toggle)
       return {}
-    }
-    return next(e)
-  })
-
-  // While music plays with the pane closed, one dim line above the prompt says so.
-  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
-    if (!s.playing || s.isOpen || !s.track) return next(e)
-    const { Box, Text } = $.ui.resolve(e)
-    const theirs = await next(e)
-    return Box({
-      flexDirection: 'column',
-      children: [Text({ dimColor: true, wrap: 'truncate-end', children: ['♪ techno · ' + s.track.phrase + ' · ' + s.track.bpm + ' bpm · /techno to open, /techno stop'] }), theirs],
-    })
-  })
-
-  on('ui.close', async ($, e, next) => {
-    if (e.id === PANE) {
-      s.isOpen = false
-      $.ui.invalidate('ui.render')
     }
     return next(e)
   })

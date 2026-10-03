@@ -10,10 +10,11 @@ Needs Claude Code v2.1.287 or later (built and checked on v2.1.288).
 
 | File | What it is |
 |---|---|
-| `.claude-plugin/plugin.json` | Plugin manifest. Name `techno`. |
+| `.claude-plugin/plugin.json` | Plugin manifest. Name `techno`. A version ending in `-dev` shows the layout switcher (dev control). |
+| `.claude-plugin/marketplace.json` | Local marketplace `techno-mod`, so the plugin installs as `techno@techno-mod`. |
 | `hooks/hooks.json` | Points to the hooks module. |
 | `hooks/register.js` | The mod: state, `/techno` command, `jam` tool, audio, save, share, click handlers. Every `$` call lives here (the validator refuses `$` passed to imported files). |
-| `hooks/views.js` | The pane's screens as pure functions of `(ui, vm, act)`: layouts A radio, B rooms, C crate. |
+| `hooks/views.js` | The app's screens as pure functions of `(ui, vm, act)`: layouts A radio, B rooms, C crate, plus the one-line mini player. |
 | `hooks/coach.js` | The coach: one suggested next move (play, build, break, drop, dice, keep, share). Its `key` names the button that is drawn as `variant: 'primary'`. |
 | `hooks/grid.client.js` | A `Client` surface module: the step grid with its own playhead clock. A click on a row posts `{ toggle: layer }` to `ui.message`. |
 | `hooks/engine.js` | The synth. Plain JS with no Node or browser APIs, so it also runs in node and in a page (a future web player). |
@@ -40,6 +41,9 @@ Needs Claude Code v2.1.287 or later (built and checked on v2.1.288).
   strip, set timeline), C crate (tracks from the session's repo, then a deck).
   Seeds: A `kYrmU3f8zfymhTS`, B `Y0ptSxD7G5UC9Fk`, C `3KCbYODsGTY3uHP`.
   **Pending: Ruslan picks one.** Then delete the other two and the switcher.
+- **Above the chat box, not a panel** (Ruslan, 2026-10-03). The app draws in the
+  `AbovePrompt` band. `/techno` shows or hides it. Hidden while music plays,
+  the band shows a one-line player (stop, open).
 
 ## Share code format
 
@@ -69,10 +73,13 @@ Do not change the meaning of an existing field: old codes must keep playing the 
 
 ## Gotchas
 
-- `~/.claude/settings.json` has `env.CLAUDE_CODE_PLUGIN_DIRS` pointing here
-  (added 2026-10-03, backup at `settings.json.bak-techno`). Every new session
-  loads this mod, including the desktop Code tab once its bundled Claude Code
-  is v2.1.287 or later.
+- **Installed as `techno@techno-mod`** (user scope, local directory
+  marketplace). The desktop Code tab ignores `CLAUDE_CODE_PLUGIN_DIRS` from
+  settings, so that env was removed again on 2026-10-03. An installed plugin
+  is cached by version: after a change, bump `version` in plugin.json, run
+  `claude plugin marketplace update techno-mod && claude plugin update techno@techno-mod`,
+  then `/reload-plugins` in the session. For fast dev in a terminal, use
+  `claude --plugin-dir ~/Documents/techno-mod` (hot reload).
 - "hooks modules are turned off ... rollout switch was saved off" means the
   CLI has not started once while signed in. Run `claude`, then `/login`.
 - Desktop Code tab runs its own bundled Claude Code (2.1.286 on 2026-10-03).

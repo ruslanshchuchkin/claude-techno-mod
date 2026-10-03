@@ -1,0 +1,12 @@
+{
+  "name": "techno-mod",
+  "owner": { "name": "Ruslan Shchuchkin" },
+  "metadata": { "description": "The techno mod for Claude Code." },
+  "plugins": [
+    {
+      "name": "techno",
+      "source": "./",
+      "description": "A small techno app above your chat box. Pick a track, click to build it up, share it with a code or an mp3."
+    }
+  ]
+}

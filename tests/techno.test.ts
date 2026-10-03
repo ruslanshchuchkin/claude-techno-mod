@@ -1,13 +1,13 @@
 import { expect, mock, test } from 'claude-code/testing'
 import { encodeCode, trackFor } from '../hooks/engine.js'
 
-// What Claude Code passes to the pane's ui.render hook, apart from the app
+// What Claude Code passes to the band's ui.render hook, apart from the app
 const PANE = {
   plugin: 'techno',
-  component: 'Pane',
-  requestId: 'techno',
+  component: 'AbovePrompt',
+  requestId: 'above-prompt',
   viewport: { columns: 140, rows: 40 },
-  props: { title: 'techno', isFocused: true, bodyColumns: 58, placement: 'dock', scroll: { offset: 0, bodyRows: 40 }, view: {} },
+  props: { hasSurvey: false, isWorking: false, maxRows: 30, bodyColumns: 120, scroll: { offset: 0, bodyRows: 30 }, view: {} },
 } as const
 
 // Answers every call the mod makes that the kit does not answer itself
@@ -22,6 +22,7 @@ function stubs(on: any) {
   on('audio.play', () => ({ value: undefined }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('ui.copy', () => ({ value: { isCopied: true } }))
+  on('fs.read', () => ({ value: JSON.stringify({ name: 'techno', version: '0.2.0-dev' }) }))
   on('process.run', ($: any, e: any) => {
     const argv = e.argv.join(' ')
     if (argv.startsWith('git rev-parse')) return { value: { exitCode: 0, stdout: 'feature/login\n', stderr: '' } }
@@ -63,10 +64,11 @@ test('a share code plays the same track', async ($, on) => {
 test('the crate lists tracks from the repo, and a click opens the deck', async ($, on) => {
   stubs(on)
   await start($)
+  await $.command.run({ command: 'techno', args: '' })
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ ...PANE, surface })
     await ui.press({ key: 'layout-C' })
-    expect(await ui.find({ type: 'Text', text: /from your repo · my-app/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /your repo/ })).toBeDefined()
     const key = 'pick-' + encodeCode(trackFor('feature/login'))
     expect(await ui.find({ key })).toBeDefined()
     await ui.press({ key })
@@ -86,7 +88,7 @@ test('the coach lights play first, then the next move after play', async ($, on)
   expect((await ui.find({ key: 'play' }))?.props.variant).toBe('primary')
   await ui.press({ key: 'play' })
   expect((await ui.find({ key: 'play' }))?.props.variant).toBeUndefined()
-  expect(await ui.find({ type: 'Text', text: /^next › / })).toBeDefined()
+  expect(await ui.find({ key: 'do-move' })).toBeDefined()
   await ui.unmount()
 })
 
@@ -160,5 +162,18 @@ test('the share card shows the play line and copies it', async ($, on) => {
   await ui.press({ key: 'share' })
   expect(await ui.find({ type: 'Text', text: /^\/techno ruslan@/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /copied/ })).toBeDefined()
+  await ui.unmount()
+})
+
+test('/techno hides the app, and a playing track shows a one-line player', async ($, on) => {
+  stubs(on)
+  await start($)
+  await $.command.run({ command: 'techno', args: 'ruslan' })
+  await $.command.run({ command: 'techno', args: '' })
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect(await ui.find({ key: 'mini-stop' })).toBeDefined()
+  expect(await ui.find({ key: 'layer-kick' })).toBeUndefined()
+  await ui.press({ key: 'mini-open' })
+  expect(await ui.find({ key: 'layer-kick' })).toBeDefined()
   await ui.unmount()
 })

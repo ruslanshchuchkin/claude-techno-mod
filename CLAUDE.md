@@ -101,7 +101,7 @@ Needs Claude Code v2.1.287 or later (built and checked on v2.1.288).
   anything with TTS, just use free macOS voices"). `say` records the track's
   name once per phrase (Whisper and Daniel, 22 kHz WAV, read back as base64,
   `decodeWav` in the engine). The `voice` layer is in the peak and the
-  breakdown (Whisper, bar 5, three semitones down) and the drop (Daniel, bar 1,
+  breakdown (Whisper, bar 3, three semitones down) and the drop (Daniel, bar 1,
   four semitones down), band-passed, driven, into the reverb and the
   ping-pong delay. No `say`: no voice, the rest plays.
 - **One background player for every chat** (Ruslan, 2026-10-03: "persistent

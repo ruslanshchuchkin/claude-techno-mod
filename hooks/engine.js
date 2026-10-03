@@ -751,10 +751,11 @@ export function render(input, { sampleRate = 44100, voices = null } = {}) {
   const stabCut = 450 + t.mood * 280 + t.energy * 120
   for (const e of a.events.stab) renderStab(stab, sr, stepAt(e.step, false), e.notes, e.vel, stabCut, noise)
 
-  // the voice says the name once a loop: deep on the drop's first bar, a whisper in bar 5
+  // the voice says the name once a loop: deep on the drop's first bar, a whisper in bar 3
+  // (inside the first 4 bars, which the set replay plays of each part)
   const drop = t.part !== null && t.part !== undefined && PLAN[t.part].section === 'drop'
   const clip = a.on.voice && voices ? (drop ? voices.deep : voices.whisper) : null
-  if (clip) renderVoice(voice, sr, (drop ? 0 : 4 * STEPS) * a.stepSeconds, clip, drop ? 0.79 : 0.84, drop ? 0.75 : 0.85)
+  if (clip) renderVoice(voice, sr, (drop ? 0 : 2 * STEPS) * a.stepSeconds, clip, drop ? 0.79 : 0.84, drop ? 0.75 : 0.85)
 
   // sidechain: everything but the kick ducks under each kick
   const duck = new Float32Array(total).fill(1)

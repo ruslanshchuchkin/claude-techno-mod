@@ -13,7 +13,7 @@ import { appView, miniView } from './views.js'
 const TOOL = 'mcp__techno__jam'
 // The plugin version, in the jam tool's answer and the player log, so a stale
 // module in an old chat shows itself. Keep it equal to plugin.json (a test checks).
-const VERSION = '0.7.0'
+const VERSION = '0.7.1'
 const GAIN = 0.7
 // [accent, normal] fill of a hit in the step grid
 const LAYER_COLORS = {

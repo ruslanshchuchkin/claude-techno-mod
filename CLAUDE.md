@@ -1,8 +1,10 @@
 # techno (Claude Code mod)
 
 A Claude Code mod. A phrase grows an 8-bar techno loop. The riff plays the
-phrase's letters. You change the track by talking to Claude, who calls the
-`jam` tool. You share it with a `/techno <code>` line or an mp3.
+phrase's letters. NEXT builds the track one part at a time, from the kick
+alone to the outro; then you replay the whole set, save it as an mp3, remix
+it or share it. You can also change the track by talking to Claude, who calls
+the `jam` tool. You share it with a `/techno <code>` line or an mp3.
 
 Needs Claude Code v2.1.287 or later (built and checked on v2.1.288).
 
@@ -10,17 +12,18 @@ Needs Claude Code v2.1.287 or later (built and checked on v2.1.288).
 
 | File | What it is |
 |---|---|
-| `.claude-plugin/plugin.json` | Plugin manifest. Name `techno`. A version ending in `-dev` shows the layout switcher (dev control). |
+| `.claude-plugin/plugin.json` | Plugin manifest. Name `techno`. |
 | `.claude-plugin/marketplace.json` | Local marketplace `techno-mod`, so the plugin installs as `techno@techno-mod`. |
 | `hooks/hooks.json` | Points to the hooks module. |
 | `hooks/register.js` | The mod: state, `/techno` command, `jam` tool, audio, save, share, click handlers. Every `$` call lives here (the validator refuses `$` passed to imported files). |
-| `hooks/views.js` | The app's screens as pure functions of `(ui, vm, act)`: layouts A radio, B rooms, C crate, plus the one-line mini player. |
-| `hooks/coach.js` | The coach: one suggested next move (play, build, break, drop, dice, keep, share). Its `key` names the button that is drawn as `variant: 'primary'`. |
-| `hooks/grid.client.js` | A `Client` surface module: the step grid with its own playhead clock. A click on a row posts `{ toggle: layer }` to `ui.message`. |
-| `hooks/engine.js` | The synth. Plain JS with no Node or browser APIs, so it also runs in node and in a page (a future web player). |
+| `hooks/views.js` | The app's screens as pure functions of `(ui, vm, act)`: the crate, the deck, the done card, and the one-line mini player. |
+| `hooks/coach.js` | The coach: play first, then the NEXT button for the next part of `PLAN`, then the done card. Its `key` names the button drawn as `variant: 'primary'`. |
+| `hooks/grid.client.js` | A `Client` surface module: the step sequencer with its own playhead clock. Every step is a fixed-width `Box` with a background, so columns line up in any font. A click on a row name posts `{ toggle: layer }` (mute); a click on a cell posts `{ step, layer }` (add or remove that hit in every bar). |
+| `hooks/engine.js` | The synth, `PLAN` (the build), `toggleStep`, `renderSet`. Plain JS with no Node or browser APIs, so it also runs in node and in a page (a future web player). |
 | `scripts/render.mjs` | Render a phrase or code to a WAV from the shell: `node scripts/render.mjs "phrase" out.wav [repeats]`. |
 | `scripts/smoke.mjs` | Runs `register.js` in node against a fake `$`. Fast check without a session. |
 | `tests/techno.test.ts` | Real tests for `claude plugin test`. |
+| `previews/v0.3/` | The old sound, the new sound on the same loop, and two full builds as mp3 (gitignored, local only). |
 
 ## Decisions
 
@@ -35,28 +38,48 @@ Needs Claude Code v2.1.287 or later (built and checked on v2.1.288).
   (ffmpeg), or a wav when ffmpeg is missing.
 
 - **App, not a command** (Ruslan, 2026-10-03: "more like an APP, click around,
-  select track, highlight what to click"). Three layouts behind a dev-only
-  switcher (shown when the plugin is not loaded from `~/.claude/plugins/cache/`):
-  A radio (tabs, station dial, next-move card), B rooms (room dropdown, mixer
-  strip, set timeline), C crate (tracks from the session's repo, then a deck).
-  Seeds: A `kYrmU3f8zfymhTS`, B `Y0ptSxD7G5UC9Fk`, C `3KCbYODsGTY3uHP`.
-  **Pending: Ruslan picks one.** Then delete the other two and the switcher.
+  select track, highlight what to click").
+- **Layout C, "crate", is the one** (Ruslan, 2026-10-03). Layouts A and B and
+  the dev layout switcher are deleted. The crate lists names from this session
+  (project, branch, last commits), kept tracks and starters; a pick opens the deck.
+- **No layer chips** (Ruslan, 2026-10-03). Energy, mood and tempo stay. Layers
+  come and go through the build, a click on a grid row name, or Claude.
+- **The build is slow, one part per NEXT** (Ruslan, 2026-10-03). `PLAN` in
+  engine.js: kick alone, + hats, + bass, + percussion, + clap, + acid riff,
+  peak (+ chords, + rumble when dark), breakdown, drop, outro, then "finish".
+  The timeline shows the seven sections and "part n of 10".
+- **The done card** (Ruslan, 2026-10-03): replay the set, save the set as mp3,
+  remix it (dice + 1, step edits cleared, back to the kick), keep, share, new
+  track. The set is the state you left each part in, so tweaks and step edits
+  are in the replay. `renderSet` plays 4 bars of each part and 8 of the last.
+- **Step edits** (Ruslan, 2026-10-03): a click on a grid cell adds or removes
+  that hit in every bar. An edit that matches the pattern again is dropped.
+- **Heavier sound** (Ruslan, 2026-10-03: "feels a bit too much pixel-art'y").
+  Kick: lower, longer, a driven sine with a noise click. Bass: a sine sub under
+  two detuned saws through a 4-pole low-pass, saturated. Hats: high-passed
+  noise with a little metal, two alternating takes. Stabs: three voices per
+  note, darker. Master: a 14 kHz low-pass before the clipper. About 3 dB more
+  below 120 Hz than v0.2.
 - **Above the chat box, not a panel** (Ruslan, 2026-10-03). The app draws in the
   `AbovePrompt` band. `/techno` shows or hides it. Hidden while music plays,
   the band shows a one-line player (stop, open).
 
 ## Share code format
 
-`<phrase-with-hyphens>@<bpm>m<mood>e<energy>[d<dice>][s<swing>][t<transpose>][+layer|-layer...]`
+`<phrase-with-hyphens>@<bpm>m<mood>e<energy>[d<dice>][s<swing>][t<transpose>][p<part>][+layer|-layer...][*<layer><on hex4><off hex4>...]`
 
-Example: `late-night-deploy@131m1e2d3+acid-hats`. Layers: kick, bass, hats,
+Example: `late-night-deploy@131m1e2d3p4+acid-hats*kick00040000`. `p` is the part of
+the build (0..9); without it the track is the old full track, where mood and
+energy decide the layers. `*` is a step edit: a 16-bit mask of steps forced on
+and one forced off, the same in every bar (grid layers only, not rumble). Layers: kick, bass, hats,
 clap, perc, acid, stab, rumble. A `+`/`-` flag forces a layer; without one,
 mood and energy decide. `parseCode` and `encodeCode` in `engine.js` own it.
 Do not change the meaning of an existing field: old codes must keep playing the same track.
 
 ## Engine notes
 
-- 8 bars, 44.1 kHz stereo, about 15 s. Renders in about 0.2 s in node. Each
+- 8 bars, 44.1 kHz stereo, about 15 s. Renders in about 0.3 s in node; a full
+  set (`renderSet`, about 80 s of audio) in about 2 s. Each
   drum hit renders once per track (`template` + `stamp`); keep it that way,
   since every click re-renders.
 - Reverb and delay tails fold back onto the start, so the loop has no seam.
@@ -68,7 +91,8 @@ Do not change the meaning of an existing field: old codes must keep playing the 
 ## Checks
 
 - `node scripts/smoke.mjs`: logic, without a session.
-- `claude plugin validate .` and `claude plugin test`: the real checks.
+- `claude plugin validate .` and `claude plugin test`: the real checks. A test
+  that presses NEXT many times needs `{ timeoutMs: 30000 }`: each part renders.
 - Listen: `node scripts/render.mjs "phrase" /tmp/x.wav 2 && afplay /tmp/x.wav`.
 
 ## Gotchas

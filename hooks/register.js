@@ -1,58 +1,60 @@
 // techno: a small techno app inside Claude Code. Pick a track (or grow one
-// from a phrase), click to build it up, and share it with a code or an mp3.
-// A coach highlights the next thing to click. Claude can also change the
-// track from chat through the mcp__techno__jam tool.
+// from a phrase), press NEXT to build it up one part at a time, and when it
+// is done replay the whole set, save it as an mp3, remix it or share it.
+// Claude can also change the track from chat through the mcp__techno__jam tool.
 //
 // /techno              open the app
 // /techno <phrase>     a new track from the phrase (or from a share code)
 // /techno stop | save | code
-import { trackFor, cleanTrack, parseCode, encodeCode, describe, render, toWav, grid, activeLayers, LAYERS, MOODS, ENERGIES, BPM_MIN, BPM_MAX } from './engine.js'
+import { trackFor, atPart, cleanTrack, parseCode, encodeCode, describe, keyName, render, renderSet, toWav, grid, toggleStep, activeLayers, LAYERS, GRID_LAYERS, PLAN, MOODS, ENERGIES, BPM_MIN, BPM_MAX } from './engine.js'
 import { nextMove } from './coach.js'
 import { appView, miniView } from './views.js'
 
 const TOOL = 'mcp__techno__jam'
 const GAIN = 0.7
-const LAYER_COLORS = { kick: 'red', bass: 'yellow', hats: 'cyan', clap: 'magenta', perc: 'blue', acid: 'green', stab: 'magenta' }
+// [accent, normal] fill of a hit in the step grid
+const LAYER_COLORS = {
+  kick: ['#ff6b6b', '#d64545'],
+  hats: ['#7fe3ff', '#3fb6d9'],
+  bass: ['#ffd166', '#e0a92e'],
+  perc: ['#8fa8ff', '#5b77e0'],
+  clap: ['#ff8fd8', '#d65bb0'],
+  acid: ['#a6ff6b', '#6fd13a'],
+  stab: ['#d0a6ff', '#a274e0'],
+}
 const STARTERS = ['late night deploy', 'coffee at 3am', 'merge conflict', 'friday deploy', 'null pointer', 'ship it', 'warehouse 4am', 'rooftop sunrise']
-const ROOMS = [
-  ['basement', 0, 3],
-  ['warehouse', 1, 3],
-  ['afterhours', 2, 2],
-  ['rooftop', 3, 2],
-  ['sunrise', 4, 1],
-]
-const MOVE_LABELS = { play: '▶ play', energy: 'energy up', clap: 'add the clap', acid: 'add the acid', break: 'take the kick out', drop: 'kick back in', dice: 'roll the dice', keep: 'keep it', share: 'share it', next: 'next track' }
 
-// Module state. The track, your kept tracks, and the layout live in $.store too.
+// Module state. The track and your kept tracks live in $.store too.
 const s = {
   track: null,
   history: [],
   playing: false,
+  replaying: false,
   ctrl: null,
   startedAt: 0,
   loopMs: 0,
   stepMs: 0,
   isOpen: false,
-  layout: 'C',
-  tab: 'tracks',
   screen: 'crate',
   showShare: false,
   saved: [],
   repo: [],
   repoName: '',
-  radio: 0,
-  done: new Set(),
-  flags: { diced: false, kept: false, shared: false },
+  // the build: the state you left each part in, the layers heard so far, and whether it is done
+  set: new Map(),
+  seen: new Set(),
+  finished: false,
   lastPrompt: '',
   you: '',
   said: '',
   status: '',
   grids: new Map(),
-  isDev: false,
 }
 
 const shareLine = (t) => '/techno ' + encodeCode(t)
-const item = (label, sub, track = trackFor(label)) => ({ label, sub, code: encodeCode(track) })
+const startOf = (phrase) => atPart(trackFor(phrase), 0)
+const item = (label, sub, track = startOf(label)) => ({ label, sub, code: encodeCode(track) })
+const isBuilding = (t) => t && t.part !== null && t.part !== undefined
 
 function gridFor(t) {
   const key = encodeCode(t)
@@ -63,32 +65,29 @@ function gridFor(t) {
   return s.grids.get(key)
 }
 
-function stations() {
-  const seen = new Set()
-  const out = []
-  const add = (list, from) => {
-    for (const it of list) if (!seen.has(it.code)) { seen.add(it.code); out.push({ ...it, from }) }
-  }
-  add(s.saved, 'your tracks')
-  add(s.repo, 'from your repo · ' + s.repoName)
-  add(STARTERS.map((p) => item(p, '')), 'starter')
-  return out
-}
-
 // What changed between two tracks, in a few words: "mood 2→1, acid on"
 function diffWords(a, b) {
   if (!a) return 'new track'
   if (a.phrase !== b.phrase) return 'new track: ' + b.phrase
   const out = []
+  if (a.part !== b.part && isBuilding(b)) out.push(PLAN[b.part].section + ': part ' + (b.part + 1))
   if (a.bpm !== b.bpm) out.push(`${a.bpm}→${b.bpm} bpm`)
   if (a.mood !== b.mood) out.push(`${MOODS[a.mood]}→${MOODS[b.mood]}`)
   if (a.energy !== b.energy) out.push(`${ENERGIES[a.energy]}→${ENERGIES[b.energy]}`)
   if (a.dice !== b.dice) out.push('new patterns')
   if (a.swing !== b.swing) out.push('swing ' + b.swing)
   if (a.transpose !== b.transpose) out.push('key +' + b.transpose)
+  if (JSON.stringify(a.steps) !== JSON.stringify(b.steps)) out.push('steps edited')
   const on1 = activeLayers(a), on2 = activeLayers(b)
   for (const name of LAYERS) if (on1[name] !== on2[name]) out.push(name + (on2[name] ? ' in' : ' out'))
   return out.join(', ') || 'no change'
+}
+
+const setLength = () => {
+  const n = s.set.size
+  const loop = s.track ? (128 * 60) / s.track.bpm / 4 : 0
+  const secs = Math.round(Math.max(0, n - 1) * loop / 2 + loop)
+  return Math.floor(secs / 60) + ':' + String(secs % 60).padStart(2, '0')
 }
 
 // ---------- audio ----------
@@ -99,12 +98,13 @@ async function startAudio($) {
   const now = await $.clock.now()
   // keep the beat: start the new loop at the same point in the bar
   let offsetMs = 0
-  if (s.playing && s.loopMs > 0) offsetMs = (((now - s.startedAt) % s.loopMs) / s.loopMs) * loopMs
+  if (s.playing && !s.replaying && s.loopMs > 0) offsetMs = (((now - s.startedAt) % s.loopMs) / s.loopMs) * loopMs
   const wav = toWav(audio, offsetMs / 1000)
   const old = s.ctrl
   const ctrl = new AbortController()
   s.ctrl = ctrl
   s.playing = true
+  s.replaying = false
   s.loopMs = loopMs
   s.stepMs = audio.stepSeconds * 1000
   s.startedAt = now - offsetMs
@@ -124,30 +124,71 @@ function stopAudio($) {
   if (s.ctrl) s.ctrl.abort()
   s.ctrl = null
   s.playing = false
+  s.replaying = false
   $.ui.invalidate('ui.render')
+}
+
+// The tracks of the finished set, in build order.
+const setTracks = () => [...s.set.keys()].sort((a, b) => a - b).map((k) => s.set.get(k))
+
+// Plays the whole build once, from the first kick to the outro.
+async function replay($) {
+  if (!s.set.size) return
+  s.status = 'rendering the set…'
+  $.ui.invalidate('ui.render')
+  const audio = renderSet(setTracks())
+  const wav = toWav(audio)
+  if (s.ctrl) s.ctrl.abort()
+  const ctrl = new AbortController()
+  s.ctrl = ctrl
+  s.playing = true
+  s.replaying = true
+  s.status = ''
+  $.ui.invalidate('ui.render')
+  try {
+    await $.audio.play({ base64: wav.toBase64(), mime: 'audio/wav' }, { signal: ctrl.signal, gain: GAIN })
+  } catch (err) {
+    if (s.ctrl === ctrl) s.status = 'audio failed: ' + String(err?.message ?? err)
+  }
+  if (s.ctrl === ctrl) {
+    s.ctrl = null
+    s.playing = false
+    s.replaying = false
+    $.ui.invalidate('ui.render')
+  }
 }
 
 // ---------- track changes ----------
 
+function noteLayers(t) {
+  const on = activeLayers(t)
+  for (const name of GRID_LAYERS) if (on[name]) s.seen.add(name)
+}
+
+// A new build: the set, the layers heard and the done card start over.
+function freshSet() {
+  s.set = new Map()
+  s.seen = new Set()
+  s.finished = false
+}
+
 async function setTrack($, next, { play } = {}) {
   const clean = cleanTrack(next)
   if (s.track && encodeCode(s.track) === encodeCode(clean)) return clean
-  if (!s.track || s.track.phrase !== clean.phrase) {
-    s.done = new Set()
-    s.flags = { diced: false, kept: false, shared: false }
-  }
+  if (!s.track || s.track.phrase !== clean.phrase) freshSet()
   if (s.track) s.history = [...s.history.slice(-29), s.track]
   s.track = clean
   s.status = ''
+  noteLayers(clean)
   await $.store.set('track', clean)
-  if (play ?? s.playing) await startAudio($)
+  if (play ?? (s.playing && !s.replaying)) await startAudio($)
   $.ui.invalidate('ui.render')
   return clean
 }
 
 async function change($, fn) {
   if (!s.track) return
-  const t = { ...s.track, layers: { ...s.track.layers } }
+  const t = { ...s.track, layers: { ...s.track.layers }, steps: { ...s.track.steps } }
   fn(t)
   const from = s.track
   const to = await setTrack($, t)
@@ -163,15 +204,52 @@ async function toggleLayer($, name) {
   })
 }
 
+async function editStep($, layer, i) {
+  const from = s.track
+  const to = await setTrack($, toggleStep(s.track, layer, i))
+  s.you = ''
+  s.said = diffWords(from, to)
+}
+
+// NEXT: remember the part you are leaving, then move to the next one.
+// After the outro, NEXT finishes the track and the done card appears.
+async function advance($) {
+  const t = s.track
+  if (!t) return
+  if (!isBuilding(t)) {
+    freshSet()
+    await setTrack($, atPart(t, 0), { play: true })
+    s.said = 'from the top: just the kick'
+    return
+  }
+  s.set.set(t.part, t)
+  if (t.part === PLAN.length - 1) {
+    s.finished = true
+    s.said = 'track done'
+    $.ui.invalidate('ui.render')
+    return
+  }
+  const to = await setTrack($, atPart(t, t.part + 1), { play: true })
+  s.you = ''
+  s.said = PLAN[to.part].section + ' · ' + PLAN[to.part].go
+}
+
+async function remix($) {
+  const t = s.track
+  freshSet()
+  await setTrack($, atPart({ ...t, dice: (t.dice + 1) % 1000, steps: {} }, 0), { play: true })
+  s.said = 'remix: new patterns, from the kick'
+}
+
 async function pick($, code) {
-  const t = parseCode(code) ?? trackFor(code)
+  const t = parseCode(code) ?? startOf(code)
+  freshSet()
+  s.track = null
   await setTrack($, t, { play: true })
   s.you = ''
   s.said = 'now playing: ' + t.phrase
   s.screen = 'deck'
   s.showShare = false
-  const i = stations().findIndex((st) => st.code === encodeCode(t))
-  if (i >= 0) s.radio = i
   $.ui.invalidate('ui.render')
 }
 
@@ -180,6 +258,7 @@ async function undo($) {
   if (!prev) { s.status = 'nothing to undo'; $.ui.invalidate('ui.render'); return }
   const from = s.track
   s.track = prev
+  s.finished = false
   s.said = 'undo: ' + diffWords(from, prev)
   s.you = ''
   await $.store.set('track', prev)
@@ -194,7 +273,6 @@ async function keep($) {
     s.status = 'removed from your tracks'
   } else {
     s.saved = [item(s.track.phrase, describe(s.track), s.track), ...s.saved].slice(0, 20)
-    s.flags.kept = true
     s.status = 'kept in your tracks'
   }
   await $.store.set('saved', s.saved)
@@ -212,7 +290,6 @@ async function copyShare($) {
       ok = r.exitCode === 0
     } catch { /* no clipboard */ }
   }
-  s.flags.shared = true
   s.status = ok ? 'play line copied. Paste it to a friend who has the mod.' : 'copy the play line above'
   $.ui.invalidate('ui.render')
 }
@@ -226,17 +303,6 @@ function openApp($) {
 function hideApp($) {
   s.isOpen = false
   $.ui.invalidate('ui.render')
-}
-
-// The layout switcher is a dev control: it shows only while plugin.json's
-// version ends in "-dev".
-async function readDev($) {
-  try {
-    const manifest = JSON.parse(await $.fs.read($.plugin.root + '/.claude-plugin/plugin.json'))
-    return String(manifest.version ?? '').endsWith('-dev')
-  } catch {
-    return false
-  }
 }
 
 // Reads the session's repo: branch, recent commit subjects, project name.
@@ -255,17 +321,15 @@ async function loadRepo($) {
   }
 }
 
-// Saves one minute (four loops) as an mp3 in ~/Music/techno, or a wav without ffmpeg.
-async function save($) {
-  const t = s.track
-  if (!t) return 'Nothing to save yet. Start with /techno <phrase>.'
+// Writes audio to ~/Music/techno as an mp3 (or a wav without ffmpeg).
+// `loops` repeats a loop that many times; the set is written as it is.
+async function writeAudio($, audio, name, loops) {
   const home = (await $.env.get('HOME')) ?? '.'
   const dir = home + '/Music/techno'
-  const name = encodeCode(t).replace(/[@+]/g, '_')
   const tmp = dir + '/.' + name + '.wav'
-  const audio = render(t)
   const wav = toWav(audio)
-  const fadeAt = (4 * audio.seconds - 4).toFixed(2)
+  const length = audio.seconds * loops
+  const fades = 'afade=t=in:d=0.5' + (loops > 1 ? ',afade=t=out:st=' + (length - 4).toFixed(2) + ':d=4' : '')
   s.status = 'saving…'
   $.ui.invalidate('ui.render')
   try {
@@ -276,7 +340,7 @@ async function save($) {
     let out = mp3
     try {
       const ff = await $.process.run(
-        ['ffmpeg', '-y', '-loglevel', 'error', '-stream_loop', '3', '-i', tmp, '-af', 'afade=t=in:d=0.5,afade=t=out:st=' + fadeAt + ':d=4', '-b:a', '192k', mp3],
+        ['ffmpeg', '-y', '-loglevel', 'error', '-stream_loop', String(loops - 1), '-i', tmp, '-af', fades, '-b:a', '192k', mp3],
         { timeoutMs: 120000 },
       )
       if (ff.exitCode !== 0) throw new Error(ff.stderr.trim())
@@ -296,43 +360,52 @@ async function save($) {
   }
 }
 
-async function doMove($, id) {
+const fileName = (t) => encodeCode(t).replace(/[@+*]/g, '_')
+
+// One minute (four loops) of the current state.
+async function save($) {
   const t = s.track
+  if (!t) return 'Nothing to save yet. Start with /techno <phrase>.'
+  return writeAudio($, render(t), fileName(t), 4)
+}
+
+// The whole build, from the first kick to the outro.
+async function saveSet($) {
+  if (!s.set.size) return save($)
+  s.status = 'rendering the set…'
+  $.ui.invalidate('ui.render')
+  return writeAudio($, renderSet(setTracks()), fileName(s.track) + '_set', 1)
+}
+
+async function doMove($, id) {
   if (id === 'play') return startAudio($)
-  if (id === 'energy') return change($, (x) => { x.energy = Math.min(4, x.energy + 1) })
-  if (id === 'clap' || id === 'acid' || id === 'break' || id === 'drop') return toggleLayer($, id === 'clap' ? 'clap' : id === 'acid' ? 'acid' : 'kick')
-  if (id === 'dice') { s.flags.diced = true; return change($, (x) => { x.dice = (x.dice + 1) % 1000 }) }
-  if (id === 'keep') return keep($)
-  if (id === 'share') { s.showShare = true; s.tab = 'share'; return copyShare($) }
-  const list = stations()
-  const i = (Math.max(0, list.findIndex((st) => st.code === encodeCode(t))) + 1) % list.length
-  return pick($, list[i].code)
+  if (id === 'build' || id === 'advance' || id === 'finish') return advance($)
+  if (id === 'done') return replay($)
 }
 
 // ---------- hooks ----------
 
 export function register(on) {
   on('session.start', async ($, e, next) => {
-    s.isDev = await readDev($)
     const saved = await $.store.get('track')
-    if (saved && typeof saved === 'object') s.track = cleanTrack(saved)
+    if (saved && typeof saved === 'object') { s.track = cleanTrack(saved); noteLayers(s.track) }
     const kept = await $.store.get('saved')
     if (Array.isArray(kept)) s.saved = kept.filter((it) => it && typeof it.code === 'string')
-    const layout = await $.store.get('layout')
-    if (layout === 'A' || layout === 'B' || layout === 'C') s.layout = layout
     if (s.track) s.screen = 'deck'
     await loadRepo($)
     await $.tool.register({
       name: 'jam',
       description:
-        "Change the techno loop in the user's techno pane (the techno mod). Use it when the user asks to change the music: darker or brighter, more or less energy, faster or slower, add or drop a layer, new patterns, or a new phrase. Pass only what changes. " +
+        "Change the techno loop in the user's techno pane (the techno mod). Use it when the user asks to change the music: darker or brighter, more or less energy, faster or slower, add or drop a layer, new patterns, the next part of the build, or a new phrase. Pass only what changes. " +
         'mood: 0 pitch black, 1 dark, 2 deep, 3 warm, 4 bright. energy: 0 minimal, 1 rolling, 2 driving, 3 peak, 4 rave. ' +
-        'layers: true forces a layer on, false forces it off, "auto" gives it back to mood and energy. dice: true rolls new patterns. phrase: a new phrase starts a new track. ' +
+        'A track is built in parts (intro, groove, build, peak, break, drop, outro); next: true moves to the next part, as the NEXT button does. ' +
+        'layers: true forces a layer on, false forces it off, "auto" gives it back to the build. dice: true rolls new patterns. phrase: a new phrase starts a new track from the kick. ' +
         'note: a few words for the pane that say what you changed. The result gives the new track and its share line. Reply to the user in one short line.',
       inputSchema: {
         type: 'object',
         properties: {
           phrase: { type: 'string', description: 'A new phrase. It seeds a whole new track; its letters become the riff.' },
+          next: { type: 'boolean', description: 'Move the build to its next part (or finish it after the outro)' },
           bpm: { type: 'integer', minimum: BPM_MIN, maximum: BPM_MAX },
           mood: { type: 'integer', minimum: 0, maximum: 4 },
           energy: { type: 'integer', minimum: 0, maximum: 4 },
@@ -367,10 +440,22 @@ export function register(on) {
   })
 
   on('tool.call', { tool: TOOL }, async ($, e) => {
-    const from = s.track ?? trackFor(e.phrase || 'techno')
-    let t = e.phrase ? trackFor(e.phrase) : { ...from, layers: { ...from.layers } }
+    if (e.next && s.track && !e.phrase) {
+      const from = s.track
+      await advance($)
+      if (e.play === false) stopAudio($)
+      s.you = s.lastPrompt
+      if (e.note) s.said = String(e.note).slice(0, 80)
+      s.screen = 'deck'
+      openApp($)
+      const where = s.finished ? 'the track is done' : `now at ${PLAN[s.track.part].section}, part ${s.track.part + 1} of ${PLAN.length}`
+      return { result: `Moved on: ${where}. Changed: ${diffWords(from, s.track)}. Share line: ${shareLine(s.track)}` }
+    }
+    const from = s.track ?? startOf(e.phrase || 'techno')
+    let t = e.phrase ? startOf(e.phrase) : { ...from, layers: { ...from.layers } }
+    if (e.phrase) freshSet()
     for (const k of ['bpm', 'mood', 'energy', 'swing', 'transpose']) if (e[k] !== undefined) t[k] = e[k]
-    if (e.dice) { t.dice = (t.dice + 1) % 1000; s.flags.diced = true }
+    if (e.dice) t.dice = (t.dice + 1) % 1000
     for (const [name, v] of Object.entries(e.layers ?? {})) {
       if (!LAYERS.includes(name)) continue
       if (v === 'auto') delete t.layers[name]
@@ -389,7 +474,8 @@ export function register(on) {
   on('prompt.submit', async ($, e, next) => {
     s.lastPrompt = String(e.text ?? '').replace(/\s+/g, ' ').trim().slice(0, 80)
     if (!s.playing || !s.track) return next(e)
-    const note = `The techno mod is playing a loop in the user's techno pane: "${s.track.phrase}", ${describe(s.track)}. If this prompt is about the music, change it with the ${TOOL} tool and reply in one short line.`
+    const where = isBuilding(s.track) ? `, ${PLAN[s.track.part].section} (part ${s.track.part + 1} of ${PLAN.length})` : ''
+    const note = `The techno mod is playing a loop in the user's techno pane: "${s.track.phrase}", ${describe(s.track)}${where}. If this prompt is about the music, change it with the ${TOOL} tool and reply in one short line.`
     return next({ ...e, context: [...(e.context ?? []), note] })
   })
 
@@ -400,63 +486,55 @@ export function register(on) {
     const ui = $.ui.resolve(e)
     const t = s.track
     const now = await $.clock.now()
-    const move = nextMove(t, { playing: s.playing, ...s.flags }, s.done)
-    const layersOn = t ? activeLayers(t) : {}
-    const list = stations()
-    const station = list[s.radio % Math.max(1, list.length)]
+    const move = nextMove(t, { playing: s.playing && !s.replaying, finished: s.finished })
     const code = t ? encodeCode(t) : ''
-    const step = s.playing && s.loopMs ? Math.floor(((((now - s.startedAt) % s.loopMs) + s.loopMs) % s.loopMs) / s.stepMs) : 0
-    const rows = t ? Object.entries(gridFor({ ...t, layers: Object.fromEntries(LAYERS.map((n) => [n, true])) })).map(([name, pattern]) => [name, pattern, LAYER_COLORS[name], !!layersOn[name]]) : []
+    const layersOn = t ? activeLayers(t) : {}
+    const looping = s.playing && !s.replaying && s.loopMs
+    const step = looping ? Math.floor(((((now - s.startedAt) % s.loopMs) + s.loopMs) % s.loopMs) / s.stepMs) : 0
+    // the grid shows the layers this build has used so far, in a fixed order
+    const all = t ? gridFor({ ...t, layers: Object.fromEntries(LAYERS.map((n) => [n, true])) }) : {}
+    const rows = GRID_LAYERS.filter((n) => s.seen.has(n) || layersOn[n]).map((n) => [n, all[n], LAYER_COLORS[n], !!layersOn[n], t.layers[n] === false])
     const vm = {
       surface: e.surface,
-      dev: s.isDev,
-      layout: s.layout,
-      tab: s.tab,
       screen: s.screen,
       showShare: s.showShare,
       track: t,
       code,
       desc: t ? describe(t) : '',
+      key: t ? keyName(t) : '',
       playing: s.playing,
-      on: layersOn,
+      replaying: s.replaying,
+      finished: s.finished,
+      set: { parts: s.set.size, length: setLength() },
       move,
-      moveLabel: MOVE_LABELS[move.id],
       isKept: s.saved.some((it) => it.code === code),
       shareLine: t ? shareLine(t) : '',
       you: s.you,
       said: s.said,
       status: s.status,
-      radio: { index: list.indexOf(station), total: list.length, from: station?.from ?? '' },
-      pickOptions: [...(t ? [{ value: code, label: t.phrase }] : []), ...ROOMS.map(([name]) => ({ value: roomCode(name), label: name })), ...s.saved.map((it) => ({ value: it.code, label: '♥ ' + it.label }))].filter((o, i, all) => all.findIndex((x) => x.value === o.value) === i),
-      crate: { repo: s.repo, repoName: s.repoName, saved: s.saved, starters: STARTERS.map((p) => item(p, describe(trackFor(p)))) },
-      gridEl: t ? ui.Client({ key: 'grid', module: './grid.client.js', props: { rows, step, stepMs: s.stepMs || 115, playing: s.playing, stamp: s.startedAt } }) : ui.Text({ children: [' '] }),
+      crate: { repo: s.repo, saved: s.saved, starters: STARTERS.map((p) => item(p, '')) },
+      gridEl: t && rows.length ? ui.Client({ key: 'grid', module: './grid.client.js', props: { rows, step, stepMs: s.stepMs || 115, playing: !!looping, stamp: s.startedAt } }) : null,
     }
     const redraw = () => $.ui.invalidate('ui.render')
     const act = {
       play: () => startAudio($),
       stop: () => stopAudio($),
-      toggle: (name) => toggleLayer($, name),
       energy: (d) => change($, (x) => { x.energy = Math.max(0, Math.min(4, x.energy + d)) }),
       mood: (d) => change($, (x) => { x.mood = Math.max(0, Math.min(4, x.mood + d)) }),
       bpm: (d) => change($, (x) => { x.bpm = Math.max(BPM_MIN, Math.min(BPM_MAX, x.bpm + d)) }),
-      dice: () => { s.flags.diced = true; return change($, (x) => { x.dice = (x.dice + 1) % 1000 }) },
+      dice: () => change($, (x) => { x.dice = (x.dice + 1) % 1000 }),
       undo: () => undo($),
       keep: () => keep($),
       share: () => { s.showShare = true; return copyShare($) },
       copy: () => copyShare($),
       closeShare: () => { s.showShare = false; s.status = ''; redraw() },
       save: () => save($),
+      saveSet: () => saveSet($),
+      replay: () => replay($),
+      remix: () => remix($),
       pick: (c) => pick($, c),
       phrase: (text) => (String(text).trim() ? pick($, text) : undefined),
-      radio: (d) => {
-        const all = stations()
-        if (!all.length) return
-        s.radio = (s.radio + d + all.length) % all.length
-        return pick($, all[s.radio].code)
-      },
-      tab: (id) => { s.tab = id; if (id === 'share' && s.track) copyShare($); redraw() },
       screen: (id) => { s.screen = id; redraw() },
-      layout: async (id) => { s.layout = id; redraw(); await $.store.set('layout', id) },
       doMove: () => doMove($, move.id),
       open: () => openApp($),
       close: () => hideApp($),
@@ -465,10 +543,16 @@ export function register(on) {
     return ui.Box({ flexDirection: 'column', children: [s.isOpen ? appView(ui, vm, act) : miniView(ui, vm, act), theirs] })
   })
 
-  // A click on a grid row mutes or unmutes that layer.
+  // The grid posts { toggle: layer } for a click on a row name, and
+  // { step, layer } for a click on a cell.
   on('ui.message', async ($, e, next) => {
-    if (e.element === 'grid' && e.data && typeof e.data.toggle === 'string' && LAYERS.includes(e.data.toggle)) {
-      await toggleLayer($, e.data.toggle)
+    const d = e.element === 'grid' ? e.data : null
+    if (d && typeof d.toggle === 'string' && LAYERS.includes(d.toggle)) {
+      await toggleLayer($, d.toggle)
+      return {}
+    }
+    if (d && typeof d.layer === 'string' && GRID_LAYERS.includes(d.layer) && Number.isInteger(d.step)) {
+      await editStep($, d.layer, d.step)
       return {}
     }
     return next(e)
@@ -480,9 +564,4 @@ export function register(on) {
     s.playing = false
     return next(e)
   })
-}
-
-function roomCode(name) {
-  const [, mood, energy] = ROOMS.find((r) => r[0] === name)
-  return encodeCode(cleanTrack({ ...trackFor(name), mood, energy }))
 }

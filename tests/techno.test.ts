@@ -1,5 +1,5 @@
 import { expect, mock, test } from 'claude-code/testing'
-import { encodeCode, trackFor } from '../hooks/engine.js'
+import { atPart, encodeCode, parseCode, toggleStep, trackFor, PLAN } from '../hooks/engine.js'
 
 // What Claude Code passes to the band's ui.render hook, apart from the app
 const PANE = {
@@ -35,12 +35,12 @@ function stubs(on: any) {
 
 const start = ($: any) => $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work/my-app' })
 
-test('/techno <phrase> starts a track and /techno code prints its share line', async ($, on) => {
+test('/techno <phrase> starts the build at the kick, and /techno code prints its share line', async ($, on) => {
   stubs(on)
   await start($)
   await $.command.run({ command: 'techno', args: 'late night deploy' })
   const code = await $.command.run({ command: 'techno', args: 'code' })
-  expect(code.text).toMatch(/^\/techno late-night-deploy@\d{3}m\de\d$/)
+  expect(code.text).toMatch(/^\/techno late-night-deploy@\d{3}m\de0p0$/)
 })
 
 test('the jam tool changes mood and layers, and the share line carries them', async ($, on) => {
@@ -53,12 +53,32 @@ test('the jam tool changes mood and layers, and the share line carries them', as
   expect(String(r.result)).toContain('-hats')
 })
 
-test('a share code plays the same track', async ($, on) => {
+test('the jam tool moves the build to its next part', async ($, on) => {
+  stubs(on)
+  await start($)
+  await $.command.run({ command: 'techno', args: 'ruslan' })
+  const r = await $.tool.call({ tool: 'mcp__techno__jam', next: true })
+  expect(String(r.result)).toContain('part 2 of')
+  expect(String(r.result)).toMatch(/p1/)
+})
+
+test('a share code plays the same track, old codes included', async ($, on) => {
   stubs(on)
   await start($)
   await $.command.run({ command: 'techno', args: 'ruslan@140m4e4d2s1+stab' })
-  const code = await $.command.run({ command: 'techno', args: 'code' })
+  let code = await $.command.run({ command: 'techno', args: 'code' })
   expect(code.text).toBe('/techno ruslan@140m4e4d2s1+stab')
+  await $.command.run({ command: 'techno', args: 'ruslan@140m4e4p5-kick*kick00040000' })
+  code = await $.command.run({ command: 'techno', args: 'code' })
+  expect(code.text).toBe('/techno ruslan@140m4e4p5-kick*kick00040000')
+})
+
+test('a step toggles on and off again, and the code round-trips', () => {
+  const t = atPart(trackFor('ruslan'), 0)
+  const on = toggleStep(t, 'kick', 2)
+  expect(encodeCode(on)).toContain('*kick0004')
+  expect(encodeCode(parseCode(encodeCode(on))!)).toBe(encodeCode(on))
+  expect(encodeCode(toggleStep(on, 'kick', 2))).toBe(encodeCode(t))
 })
 
 test('the crate lists tracks from the repo, and a click opens the deck', async ($, on) => {
@@ -67,9 +87,8 @@ test('the crate lists tracks from the repo, and a click opens the deck', async (
   await $.command.run({ command: 'techno', args: '' })
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ ...PANE, surface })
-    await ui.press({ key: 'layout-C' })
-    expect(await ui.find({ type: 'Text', text: /your repo/ })).toBeDefined()
-    const key = 'pick-' + encodeCode(trackFor('feature/login'))
+    expect(await ui.find({ type: 'Text', text: /this project/ })).toBeDefined()
+    const key = 'pick-' + encodeCode(atPart(trackFor('feature/login'), 0))
     expect(await ui.find({ key })).toBeDefined()
     await ui.press({ key })
     expect(await ui.find({ key: 'back' })).toBeDefined()
@@ -78,79 +97,44 @@ test('the crate lists tracks from the repo, and a click opens the deck', async (
   }
 })
 
-test('the coach lights play first, then the next move after play', async ($, on) => {
+test('the deck has energy, mood and tempo, a grid, and no layer chips', async ($, on) => {
+  stubs(on)
+  await start($)
+  await $.command.run({ command: 'techno', args: 'late night deploy' })
+  await $.command.run({ command: 'techno', args: 'stop' })
+  for (const surface of ['terminal', 'desktop'] as const) {
+    const ui = await $.ui.mount({ ...PANE, surface })
+    expect(await ui.find({ key: 'grid' })).toBeDefined()
+    expect(await ui.find({ key: 'energy-up' })).toBeDefined()
+    expect(await ui.find({ key: 'layer-kick' })).toBeUndefined()
+    expect(await ui.find({ type: 'Text', text: /part 1 of/ })).toBeDefined()
+    await ui.unmount()
+  }
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await ui.press({ key: 'tempo-up' })
+  await ui.unmount()
+  const code = await $.command.run({ command: 'techno', args: 'code' })
+  expect(code.text).toMatch(/p0/)
+})
+
+test('play is lit first, then NEXT builds the track part by part to the done card', { timeoutMs: 30000 }, async ($, on) => {
   stubs(on)
   await start($)
   await $.command.run({ command: 'techno', args: 'late night deploy' })
   await $.command.run({ command: 'techno', args: 'stop' })
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  await ui.press({ key: 'layout-C' })
   expect((await ui.find({ key: 'play' }))?.props.variant).toBe('primary')
   await ui.press({ key: 'play' })
-  expect((await ui.find({ key: 'play' }))?.props.variant).toBeUndefined()
-  expect(await ui.find({ key: 'do-move' })).toBeDefined()
+  expect((await ui.find({ key: 'do-move' }))?.props.variant).toBe('primary')
+  expect((await ui.find({ key: 'do-move' }))?.props.label).toContain('+ hats')
+  for (let i = 0; i < PLAN.length; i++) await ui.press({ key: 'do-move' })
+  expect(await ui.find({ type: 'Text', text: /Your track is done/ })).toBeDefined()
+  expect(await ui.find({ key: 'replay' })).toBeDefined()
+  expect(await ui.find({ key: 'save-set' })).toBeDefined()
+  await ui.press({ key: 'remix' })
+  expect(await ui.find({ type: 'Text', text: /Your track is done/ })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: /part 1 of/ })).toBeDefined()
   await ui.unmount()
-})
-
-test('layout A draws in both apps, with working controls', async ($, on) => {
-  stubs(on)
-  await start($)
-  await $.command.run({ command: 'techno', args: 'late night deploy' })
-  await $.command.run({ command: 'techno', args: 'stop' })
-  for (const surface of ['terminal', 'desktop'] as const) {
-    const ui = await $.ui.mount({ ...PANE, surface })
-    await ui.press({ key: 'layout-A' })
-    await ui.press({ key: 'tab-mix' })
-    expect(await ui.find({ key: 'grid' })).toBeDefined()
-    expect(await ui.find({ key: 'layer-kick' })).toBeDefined()
-    await ui.unmount()
-  }
-  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  await ui.press({ key: 'energy-up' })
-  await ui.press({ key: 'layer-perc' })
-  await ui.unmount()
-  const code = await $.command.run({ command: 'techno', args: 'code' })
-  expect(code.text).toMatch(/e3/)
-})
-
-test('layout B draws in both apps, with working controls', async ($, on) => {
-  stubs(on)
-  await start($)
-  await $.command.run({ command: 'techno', args: 'late night deploy' })
-  await $.command.run({ command: 'techno', args: 'stop' })
-  for (const surface of ['terminal', 'desktop'] as const) {
-    const ui = await $.ui.mount({ ...PANE, surface })
-    await ui.press({ key: 'layout-B' })
-    expect(await ui.find({ key: 'grid' })).toBeDefined()
-    expect(await ui.find({ key: 'layer-kick' })).toBeDefined()
-    await ui.unmount()
-  }
-  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  await ui.press({ key: 'energy-up' })
-  await ui.press({ key: 'layer-perc' })
-  await ui.unmount()
-  const code = await $.command.run({ command: 'techno', args: 'code' })
-  expect(code.text).toMatch(/e3/)
-})
-
-test('layout C draws in both apps, with working controls', async ($, on) => {
-  stubs(on)
-  await start($)
-  await $.command.run({ command: 'techno', args: 'late night deploy' })
-  await $.command.run({ command: 'techno', args: 'stop' })
-  for (const surface of ['terminal', 'desktop'] as const) {
-    const ui = await $.ui.mount({ ...PANE, surface })
-    await ui.press({ key: 'layout-C' })
-    expect(await ui.find({ key: 'grid' })).toBeDefined()
-    expect(await ui.find({ key: 'layer-kick' })).toBeDefined()
-    await ui.unmount()
-  }
-  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  await ui.press({ key: 'energy-up' })
-  await ui.press({ key: 'layer-perc' })
-  await ui.unmount()
-  const code = await $.command.run({ command: 'techno', args: 'code' })
-  expect(code.text).toMatch(/e3/)
 })
 
 test('the share card shows the play line and copies it', async ($, on) => {
@@ -158,7 +142,6 @@ test('the share card shows the play line and copies it', async ($, on) => {
   await start($)
   await $.command.run({ command: 'techno', args: 'ruslan' })
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  await ui.press({ key: 'layout-B' })
   await ui.press({ key: 'share' })
   expect(await ui.find({ type: 'Text', text: /^\/techno ruslan@/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /copied/ })).toBeDefined()
@@ -172,8 +155,25 @@ test('/techno hides the app, and a playing track shows a one-line player', async
   await $.command.run({ command: 'techno', args: '' })
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   expect(await ui.find({ key: 'mini-stop' })).toBeDefined()
-  expect(await ui.find({ key: 'layer-kick' })).toBeUndefined()
+  expect(await ui.find({ key: 'energy-up' })).toBeUndefined()
   await ui.press({ key: 'mini-open' })
-  expect(await ui.find({ key: 'layer-kick' })).toBeDefined()
+  expect(await ui.find({ key: 'energy-up' })).toBeDefined()
   await ui.unmount()
+})
+
+test('a click on a grid cell adds a hit, and a click on a row name mutes the layer', { timeoutMs: 30000 }, async ($, on) => {
+  stubs(on)
+  await start($)
+  await $.command.run({ command: 'techno', args: 'ruslan' })
+  for (const surface of ['terminal', 'desktop'] as const) {
+    const ui = await $.ui.mount({ ...PANE, surface })
+    // row 0 (kick) sits under the header and the beat ruler; step 2 starts at column 8 + 2 * 3
+    await ui.pointer({ type: 'down', x: 14, y: 2, button: 'left', in: 'grid' })
+    expect((await $.command.run({ command: 'techno', args: 'code' })).text).toContain('*kick0004')
+    await ui.pointer({ type: 'down', x: 14, y: 2, button: 'left', in: 'grid' })
+    await ui.pointer({ type: 'down', x: 1, y: 2, button: 'left', in: 'grid' })
+    expect((await $.command.run({ command: 'techno', args: 'code' })).text).toContain('-kick')
+    await ui.pointer({ type: 'down', x: 1, y: 2, button: 'left', in: 'grid' })
+    await ui.unmount()
+  }
 })

@@ -1,0 +1,6 @@
+{
+  "name": "techno",
+  "version": "0.1.0",
+  "description": "Grow a techno loop from a phrase, then change it by talking to Claude. Share it with a code or an mp3.",
+  "author": { "name": "Ruslan Shchuchkin" }
+}

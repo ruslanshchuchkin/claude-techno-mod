@@ -83,16 +83,27 @@ Needs Claude Code v2.1.287 or later (built and checked on v2.1.288).
   kept list were already shared. Now `bar: true` in the store makes a new
   session show the bar (same track) until its ×. With the background player
   the music itself carries on too (see below).
-- **The deck top is the "radio"** (Ruslan, 2026-10-03: "I like B but I still
-  like the grid ... my problem was with stuff above the grid: too much text,
-  not clear"). Seeds: A `nWGSepVLrXVhTB1` desk, B `OMGZxLeoTdAXrvr` radio,
-  C `O8bwmwV7G6rK4Ua` autopilot. Header: `♪ techno`, the three moods as
-  stations (the one on air is a button), hide. Row 1: play, the track, where
-  its name comes from (`sourceOf`: a starter track, named after a commit, ...),
-  and the build as `section ▰▰▰▱▱▱ n/10`. Row 2: `now` + the sounds in plain
-  words (`LAYER_WORDS`), then `next: add the ... ›` and `let it play itself`.
-  Row 3: word knobs (slower 130 faster · calmer busier · new rhythm undo ·
-  save share · other tracks). The grid is unchanged. "dice" is "new rhythm".
+- **Layout C+, one line above the grid** (Ruslan, 2026-10-03: "make it simpler
+  ... super obvious what's happening now, what's next, what kind of track").
+  Seeds: A `SLJwcmmvR7nex8X` grid first, B `TTyxAw9bjDcC94X` big section,
+  C `LliniTBWK1Znj5T` now → next. The Opus critic scored A 6, B 5, C 7 and
+  said: build C, take the dashed "next" row from A. Mockups and screenshots:
+  `previews/design/` (gitignored). The line: play/stop, the track,
+  `· mood · bpm`, `▰▰▰▱▱▱▱▱▱▱ 3/10`, `→ rumble next` (or `rumble in 0:12`
+  with auto, a live countdown), then `add rumble ›` / `skip to rumble ›`,
+  `○ build by itself`, hide. The next sound is a dashed row in the grid
+  (`isNext`, not clickable). Under the grid: `mood: sad mysterious dark ·
+  other tracks · new rhythm · share mp3`. No tempo or energy knobs: the mood
+  sets them, and Claude can still change them.
+- **Share = an mp3** (Ruslan, 2026-10-03, share A). `share mp3` saves one
+  minute to `~/Music/techno`, shows it in Finder, and copies the play line.
+- **Voice lines, free macOS voices only** (Ruslan, 2026-10-03: "don't generate
+  anything with TTS, just use free macOS voices"). `say` records the track's
+  name once per phrase (Whisper and Daniel, 22 kHz WAV, read back as base64,
+  `decodeWav` in the engine). The `voice` layer is in the peak and the
+  breakdown (Whisper, bar 5, three semitones down) and the drop (Daniel, bar 1,
+  four semitones down), band-passed, driven, into the reverb and the
+  ping-pong delay. No `say`: no voice, the rest plays.
 - **One background player for every chat** (Ruslan, 2026-10-03: "persistent
   between chats ... can we stop it if Claude Code is stopped as well?"). With
   `ffplay` and `perl` on the machine, `PLAYER_SH` runs ffplay in its own

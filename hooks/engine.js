@@ -4,7 +4,7 @@
 // A track is a small state object. The phrase seeds everything: the key, the
 // patterns, and the riff, whose notes are the phrase's own letters.
 
-export const LAYERS = ['kick', 'bass', 'hats', 'clap', 'perc', 'acid', 'stab', 'rumble']
+export const LAYERS = ['kick', 'bass', 'hats', 'clap', 'perc', 'acid', 'stab', 'rumble', 'voice']
 export const MOODS = ['pitch black', 'dark', 'deep', 'warm', 'bright']
 export const ENERGIES = ['minimal', 'rolling', 'driving', 'peak', 'rave']
 const NOTE_NAMES = ['c', 'c#', 'd', 'd#', 'e', 'f', 'f#', 'g', 'g#', 'a', 'a#', 'b']
@@ -60,17 +60,21 @@ export const SECTIONS = ['intro', 'groove', 'build', 'peak', 'break', 'drop', 'o
 // Minimal on purpose: music to work to. The kick, the sub and the drums roll
 // for a long time before the clap; the acid riff is not in the plan (Claude or
 // a grid click can still bring it in).
+// `name` is what the part brings, for the pane ("rumble in 0:12"); `adds` is
+// true when that is a new sound and not a new section. `layer` is the one new
+// layer, for the dashed "next" row in the grid. The voice says the track's
+// name: a whisper over the peak and the breakdown, a deep voice on the drop.
 export const PLAN = [
-  { section: 'intro', energy: 0, layers: ['kick'], go: 'start', tip: 'Just the kick' },
-  { section: 'intro', energy: 0, layers: ['kick', 'bass'], go: 'add the deep bass', tip: 'Kick and a deep sub' },
-  { section: 'groove', energy: 1, layers: ['kick', 'bass', 'hats'], go: 'add hats', tip: 'Offbeat hats, the groove rolls' },
-  { section: 'groove', energy: 1, layers: ['kick', 'bass', 'hats', 'rumble'], go: 'add the rumble', tip: 'The rumble fills the low end' },
-  { section: 'build', energy: 2, layers: ['kick', 'bass', 'hats', 'rumble', 'perc'], go: 'add percussion', tip: 'Percussion, still no clap' },
-  { section: 'build', energy: 2, layers: ['kick', 'bass', 'hats', 'rumble', 'perc', 'clap'], go: 'add the clap', tip: 'The clap on 2 and 4' },
-  { section: 'peak', energy: 3, layers: ['kick', 'bass', 'hats', 'rumble', 'perc', 'clap', 'stab'], go: 'add the dub chord', tip: 'A dub chord echoes on top' },
-  { section: 'break', energy: 2, layers: ['hats', 'perc', 'stab'], go: 'the breakdown', tip: 'The kick drops out. Breathe' },
-  { section: 'drop', energy: 3, layers: ['kick', 'bass', 'hats', 'rumble', 'perc', 'clap', 'stab'], go: 'the drop', tip: 'The low end slams back in' },
-  { section: 'outro', energy: 1, layers: ['kick', 'bass', 'hats', 'rumble'], go: 'the outro', tip: 'Back to kick, sub and rumble' },
+  { section: 'intro', energy: 0, layers: ['kick'], name: 'kick', adds: true, layer: 'kick', go: 'start', tip: 'Just the kick' },
+  { section: 'intro', energy: 0, layers: ['kick', 'bass'], name: 'deep bass', adds: true, layer: 'bass', go: 'add the deep bass', tip: 'Kick and a deep sub' },
+  { section: 'groove', energy: 1, layers: ['kick', 'bass', 'hats'], name: 'hats', adds: true, layer: 'hats', go: 'add hats', tip: 'Offbeat hats, the groove rolls' },
+  { section: 'groove', energy: 1, layers: ['kick', 'bass', 'hats', 'rumble'], name: 'rumble', adds: true, layer: 'rumble', go: 'add the rumble', tip: 'The rumble fills the low end' },
+  { section: 'build', energy: 2, layers: ['kick', 'bass', 'hats', 'rumble', 'perc'], name: 'percussion', adds: true, layer: 'perc', go: 'add percussion', tip: 'Percussion, still no clap' },
+  { section: 'build', energy: 2, layers: ['kick', 'bass', 'hats', 'rumble', 'perc', 'clap'], name: 'clap', adds: true, layer: 'clap', go: 'add the clap', tip: 'The clap on 2 and 4' },
+  { section: 'peak', energy: 3, layers: ['kick', 'bass', 'hats', 'rumble', 'perc', 'clap', 'stab', 'voice'], name: 'dub chord', adds: true, layer: 'stab', go: 'add the dub chord', tip: 'A dub chord and a whisper' },
+  { section: 'break', energy: 2, layers: ['hats', 'perc', 'stab', 'voice'], name: 'breakdown', adds: false, go: 'the breakdown', tip: 'The kick drops out. Breathe' },
+  { section: 'drop', energy: 3, layers: ['kick', 'bass', 'hats', 'rumble', 'perc', 'clap', 'stab', 'voice'], name: 'drop', adds: false, go: 'the drop', tip: 'The low end slams back in' },
+  { section: 'outro', energy: 1, layers: ['kick', 'bass', 'hats', 'rumble'], name: 'outro', adds: false, go: 'the outro', tip: 'Back to kick, sub and rumble' },
 ]
 
 // ---------- seed helpers ----------
@@ -183,6 +187,7 @@ export function activeLayers(t) {
     acid: false,
     stab: flavor === 'dub' || t.energy >= 4,
     rumble: t.mood <= 1 && t.energy >= 1,
+    voice: false,
   }
   const out = {}
   for (const name of LAYERS) out[name] = t.layers[name] ?? auto[name]
@@ -638,6 +643,49 @@ function pingPong(input, sr, delaySeconds, feedback) {
   return [outL, outR]
 }
 
+// ---------- the voice ----------
+// The mod records the track's name with a free macOS voice (`say`) and hands
+// the clips in; the engine stays pure. A clip is { data: Float32Array, rate }.
+
+// A 16-bit PCM WAV (as `say --file-format=WAVE` writes it) to a mono clip at
+// peak 1. Walks the chunks, since `say` puts an FLLR chunk before the data.
+export function decodeWav(bytes) {
+  const v = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+  const tag = (o) => String.fromCharCode(bytes[o], bytes[o + 1], bytes[o + 2], bytes[o + 3])
+  if (bytes.length < 44 || tag(0) !== 'RIFF' || tag(8) !== 'WAVE') return null
+  let o = 12, rate = 0, channels = 1, bits = 16
+  while (o + 8 <= bytes.length) {
+    const id = tag(o), size = v.getUint32(o + 4, true)
+    if (id === 'fmt ') { channels = v.getUint16(o + 10, true); rate = v.getUint32(o + 12, true); bits = v.getUint16(o + 22, true) }
+    if (id === 'data') {
+      if (bits !== 16 || !rate) return null
+      const n = Math.floor(Math.min(size, bytes.length - o - 8) / 2 / channels)
+      const data = new Float32Array(n)
+      let peak = 0
+      for (let i = 0; i < n; i++) { data[i] = v.getInt16(o + 8 + i * 2 * channels, true) / 32768; peak = Math.max(peak, Math.abs(data[i])) }
+      if (peak > 0) for (let i = 0; i < n; i++) data[i] /= peak
+      return { data, rate }
+    }
+    o += 8 + size + (size & 1)
+  }
+  return null
+}
+
+// Pitched down (the whisper three semitones, the deep voice four), band-passed
+// like an old radio and driven a little. The echo and the room come from the sends.
+function renderVoice(buf, sr, at, clip, pitch, gain) {
+  const start = Math.round(at * sr)
+  const inc = (clip.rate / sr) * pitch
+  const n = Math.min(Math.floor((clip.data.length - 1) / inc), buf.length - start)
+  const hp = svf(); hp.set(190, sr, 0.7)
+  const lp = svf(); lp.set(4800, sr, 0.8)
+  for (let i = 0; i < n; i++) {
+    const p = i * inc, k = Math.floor(p), f = p - k
+    const x = clip.data[k] * (1 - f) + clip.data[k + 1] * f
+    buf[start + i] += soft(lp.run(hp.run(x, 2), 0) * 1.8) * gain
+  }
+}
+
 // ---------- render ----------
 
 // Renders one hit into its own buffer, so a drum is synthesized once per
@@ -656,7 +704,7 @@ function stamp(buf, tpl, at, vel, sr) {
 
 // Renders the 8-bar loop. The reverb and delay tails fold back onto the start,
 // so the loop repeats without a seam.
-export function render(input, { sampleRate = 44100 } = {}) {
+export function render(input, { sampleRate = 44100, voices = null } = {}) {
   const a = arrange(input)
   const t = a.track
   const sr = sampleRate
@@ -666,7 +714,7 @@ export function render(input, { sampleRate = 44100 } = {}) {
   const r = rng(hash32('sound:' + t.phrase))
   const stepAt = (step, swingable) => step * a.stepSeconds + (swingable && step % 2 === 1 ? t.swing * 0.045 * a.stepSeconds : 0)
   const bus = () => new Float32Array(total)
-  const kick = bus(), bass = bus(), hats = bus(), clap = bus(), perc = bus(), acid = bus(), stab = bus()
+  const kick = bus(), bass = bus(), hats = bus(), clap = bus(), perc = bus(), acid = bus(), stab = bus(), voice = bus()
 
   // the kick's tail sits on the key's root, so kick and sub are one note
   let tail = mtof(a.root)
@@ -703,6 +751,11 @@ export function render(input, { sampleRate = 44100 } = {}) {
   const stabCut = 450 + t.mood * 280 + t.energy * 120
   for (const e of a.events.stab) renderStab(stab, sr, stepAt(e.step, false), e.notes, e.vel, stabCut, noise)
 
+  // the voice says the name once a loop: deep on the drop's first bar, a whisper in bar 5
+  const drop = t.part !== null && t.part !== undefined && PLAN[t.part].section === 'drop'
+  const clip = a.on.voice && voices ? (drop ? voices.deep : voices.whisper) : null
+  if (clip) renderVoice(voice, sr, (drop ? 0 : 4 * STEPS) * a.stepSeconds, clip, drop ? 0.79 : 0.84, drop ? 0.75 : 0.85)
+
   // sidechain: everything but the kick ducks under each kick
   const duck = new Float32Array(total).fill(1)
   for (const e of a.events.kick) {
@@ -717,8 +770,8 @@ export function render(input, { sampleRate = 44100 } = {}) {
   // sends
   const revIn = bus(), dlyIn = bus()
   for (let i = 0; i < total; i++) {
-    revIn[i] = clap[i] * 0.6 + perc[i] * 0.35 + stab[i] * 0.35 + hats[i] * 0.12 + acid[i] * 0.12
-    dlyIn[i] = stab[i] * 0.7 + acid[i] * 0.18 + perc[i] * 0.15
+    revIn[i] = clap[i] * 0.6 + perc[i] * 0.35 + stab[i] * 0.35 + hats[i] * 0.12 + acid[i] * 0.12 + voice[i] * 0.55
+    dlyIn[i] = stab[i] * 0.7 + acid[i] * 0.18 + perc[i] * 0.15 + voice[i] * 0.6
   }
   const room = 0.8 + (t.mood <= 1 ? 0.06 : 0)
   const [revL, revR] = reverb(revIn, revIn, sr, room, 0.35)
@@ -741,7 +794,7 @@ export function render(input, { sampleRate = 44100 } = {}) {
   const left = new Float32Array(total), right = new Float32Array(total)
   for (let i = 0; i < total; i++) {
     const d = duck[i]
-    const center = kick[i] * levels.kick + (bass[i] * levels.bass + clap[i] * levels.clap + acid[i] * levels.acid) * d + (rumL ? rumL[i] * 1.35 * (d * d) : 0)
+    const center = kick[i] * levels.kick + (bass[i] * levels.bass + clap[i] * levels.clap + acid[i] * levels.acid) * d + voice[i] * 0.8 * Math.sqrt(d) + (rumL ? rumL[i] * 1.35 * (d * d) : 0)
     const h = hats[i] * levels.hats, p = perc[i] * levels.perc, s = stab[i] * levels.stab * d
     left[i] = center + h * 0.8 + p * 1.15 + s + (revL[i] * 0.9 + dlyL[i] * 0.45) * d
     right[i] = center + h * 1.15 + p * 0.8 + s + (revR[i] * 0.9 + dlyR[i] * 0.45) * d
@@ -776,9 +829,9 @@ export function render(input, { sampleRate = 44100 } = {}) {
 // The whole build as one clip: the first 4 bars of each part in order, then
 // the last part's full 8 bars, fading out. `tracks` are the states you left
 // each part in, so your tweaks and step edits are in the replay too.
-export function renderSet(tracks, { sampleRate = 44100 } = {}) {
+export function renderSet(tracks, { sampleRate = 44100, voices = null } = {}) {
   const pieces = tracks.map((t, i) => {
-    const a = render(t, { sampleRate })
+    const a = render(t, { sampleRate, voices })
     const n = i === tracks.length - 1 ? a.left.length : Math.round(a.left.length / 2)
     return [a.left.subarray(0, n), a.right.subarray(0, n)]
   })

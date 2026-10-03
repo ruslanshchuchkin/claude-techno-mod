@@ -36,16 +36,17 @@ function header(ui, vm, act, middle) {
   })
 }
 
-// The three moods as stations: the one on air is a button, the others plain words.
-function stations(ui, vm, act) {
-  return row(ui, VIBES.map((v) => ui.Button({ key: 'mood-' + v.name, label: v.name, ...(v.name === vm.mood ? {} : { plain: true, dimColor: true }), onPress: () => act.setMood(v.name) })), { columnGap: 2 })
-}
-
-// Row 1: play, the track, where its name comes from; how far the build is, on the right.
-function nowPlaying(ui, vm, act) {
-  const part = vm.track.part
+// The one line above the grid (layout C+): play, the track and its kind, how
+// far the build is, what comes next and when; skip and auto on the right.
+function topLine(ui, vm, act) {
+  const t = vm.track
+  const part = t.part
   const building = part !== null && part !== undefined
   const done = building ? part + 1 : 0
+  const nx = vm.next
+  const when = nx?.inMs !== undefined ? Math.max(0, Math.ceil(nx.inMs / 1000)) : null
+  const clock = when === null ? '' : Math.floor(when / 60) + ':' + String(when % 60).padStart(2, '0')
+  const skip = nx ? (vm.auto ? 'skip to ' : nx.adds ? 'add ' : 'go to ') + nx.name + ' ›' : ''
   return ui.Box({
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -53,67 +54,38 @@ function nowPlaying(ui, vm, act) {
     children: [
       row(ui, [
         btn(ui, vm, 'play', vm.playing ? '■ stop' : '▶ play', () => (vm.playing ? act.stop() : act.play()), { hotkey: 'p' }),
-        ui.Text({ bold: true, wrap: 'truncate-end', children: [vm.track.phrase] }),
-        dim(ui, '· ' + vm.source, { wrap: 'truncate-end' }),
+        ui.Text({ bold: true, wrap: 'truncate-end', children: [t.phrase] }),
+        dim(ui, `· ${vm.mood} · ${t.bpm} bpm`),
+        building ? ui.Box({ flexDirection: 'row', marginLeft: 1, children: [ui.Text({ children: ['▰'.repeat(done)] }), dim(ui, '▱'.repeat(PLAN.length - done))] }) : dim(ui, 'full track'),
+        building ? dim(ui, `${done}/${PLAN.length}`) : null,
+        nx ? dim(ui, '→') : null,
+        nx ? ui.Text({ children: [nx.name + (clock ? ' in' : ' next')] }) : null,
+        clock ? ui.Text({ bold: true, children: [clock] }) : null,
       ]),
-      building
-        ? row(ui, [dim(ui, PLAN[part].section), ui.Box({ flexDirection: 'row', children: [ui.Text({ children: ['▰'.repeat(done)] }), dim(ui, '▱'.repeat(PLAN.length - done))] }), dim(ui, `${done}/${PLAN.length}`)])
-        : dim(ui, 'full track'),
-    ],
-  })
-}
-
-// Row 2: what you hear now, in plain words; the next step and auto on the right.
-function nextLine(ui, vm, act) {
-  return ui.Box({
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    children: [
-      row(ui, [dim(ui, vm.playing ? 'now' : 'paused'), ui.Text({ wrap: 'truncate-end', children: [vm.hearing] })]),
       row(ui, [
-        vm.move.label ? btn(ui, vm, 'do-move', vm.move.label + ' ›', () => act.doMove(), { hotkey: 'n' }) : null,
-        btn(ui, vm, 'auto', vm.auto ? '● playing by itself' : 'let it play itself', () => act.auto()),
+        nx && !vm.finished ? btn(ui, vm, 'do-move', skip, () => act.doMove(), { hotkey: 'n' }) : null,
+        btn(ui, vm, 'auto', vm.auto ? '● building by itself' : '○ build by itself', () => act.auto()),
+        ui.Button({ key: 'close', label: 'hide', role: 'dismiss', plain: true, dimColor: true, onPress: () => act.close() }),
       ]),
     ],
   })
 }
 
-// Row 3: the small knobs, as words that say what they do.
-function knobs(ui, vm, act) {
-  const t = vm.track
-  const word = (key, label, onPress) => ui.Button({ key, label, plain: true, dimColor: vm.move?.key !== key, onPress })
-  const sep = (k) => dim(ui, '·', { key: 'sep-' + k })
+// Under the grid: the three moods (each sets the scale, the tempo and the
+// energy), then the few things you do once in a while.
+function footer(ui, vm, act) {
+  const word = (key, label, onPress, lit = false) => ui.Button({ key, label, plain: true, dimColor: !lit, onPress })
   return row(ui, [
-    word('tempo-down', 'slower', () => act.bpm(-2)), ui.Text({ children: [String(t.bpm)] }), word('tempo-up', 'faster', () => act.bpm(2)), sep(1),
-    word('energy-down', 'calmer', () => act.energy(-1)), word('energy-up', 'busier', () => act.energy(1)), sep(2),
-    word('dice', 'new rhythm', () => act.dice()), word('undo', 'undo', () => act.undo()), sep(3),
-    word('keep', vm.isKept ? '♥ saved' : '♡ save', () => act.keep()), word('share', 'share', () => act.share()), sep(4),
+    dim(ui, 'mood:'),
+    ...VIBES.map((v) => word('mood-' + v.name, v.name, () => act.setMood(v.name), v.name === vm.mood)),
+    dim(ui, '·', { key: 'sep-1' }),
     word('back', 'other tracks', () => act.screen('crate')),
-  ], { columnGap: 1 })
+    word('dice', 'new rhythm', () => act.dice()),
+    word('share', 'share mp3', () => act.share()),
+  ], { columnGap: 2 })
 }
 
-function talkLine(ui, vm) {
-  if (vm.said) return row(ui, [vm.you ? dim(ui, 'you: ' + vm.you, { wrap: 'truncate-end' }) : null, ui.Text({ wrap: 'truncate-end', children: ['claude › ' + vm.said] })], { columnGap: 2 })
-  return dim(ui, 'or ask Claude in chat: "darker", "mysterious", "faster", "next part"', { wrap: 'truncate-end' })
-}
-
-function shareBlock(ui, vm, act) {
-  return ui.Box({
-    flexDirection: 'column',
-    borderStyle: 'round',
-    paddingX: 1,
-    children: [
-      row(ui, [ui.Text({ bold: true, children: [vm.track.phrase.toUpperCase()] }), dim(ui, '· ' + vm.desc)]),
-      row(ui, [dim(ui, 'play it in Claude Code:'), ui.Text({ color: 'green', wrap: 'wrap', children: [vm.shareLine] })]),
-      row(ui, [
-        ui.Button({ key: 'copy', label: 'copy play line', variant: 'primary', onPress: () => act.copy() }),
-        ui.Button({ key: 'save', label: '↓ save mp3', onPress: () => act.save() }),
-        ui.Button({ key: 'share-close', label: 'done', plain: true, dimColor: true, onPress: () => act.closeShare() }),
-      ]),
-    ],
-  })
-}
+const talkLine = (ui, vm) => (vm.said ? row(ui, [vm.you ? dim(ui, 'you: ' + vm.you, { wrap: 'truncate-end' }) : null, ui.Text({ wrap: 'truncate-end', children: ['claude › ' + vm.said] })], { columnGap: 2 }) : null)
 
 // The finished track: listen to the whole build again, save it, or remix it.
 function doneCard(ui, vm, act) {
@@ -155,12 +127,11 @@ function crate(ui, vm, act) {
 
 function deck(ui, vm, act) {
   return [
-    header(ui, vm, act, [stations(ui, vm, act)]),
-    nowPlaying(ui, vm, act),
-    vm.finished ? doneCard(ui, vm, act) : nextLine(ui, vm, act),
-    knobs(ui, vm, act),
+    vm.finished ? header(ui, vm, act, [dim(ui, vm.track.phrase)]) : topLine(ui, vm, act),
+    vm.finished ? doneCard(ui, vm, act) : null,
     vm.gridEl,
-    vm.showShare ? shareBlock(ui, vm, act) : talkLine(ui, vm),
+    footer(ui, vm, act),
+    talkLine(ui, vm),
   ]
 }
 

@@ -100,7 +100,7 @@ test('the crate lists tracks from the repo, and a click opens the deck', async (
   }
 })
 
-test('the deck has energy, mood and tempo, a grid, and no layer chips', async ($, on) => {
+test('the deck is one line, a grid and the moods: no knobs, no layer chips', async ($, on) => {
   stubs(on)
   await start($)
   await $.command.run({ command: 'techno', args: 'late night deploy' })
@@ -108,18 +108,19 @@ test('the deck has energy, mood and tempo, a grid, and no layer chips', async ($
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ ...PANE, surface })
     expect(await ui.find({ key: 'grid' })).toBeDefined()
-    expect(await ui.find({ key: 'energy-up' })).toBeDefined()
+    expect(await ui.find({ key: 'energy-up' })).toBeUndefined()
+    expect(await ui.find({ key: 'mood-sad' })).toBeDefined()
     expect(await ui.find({ key: 'layer-kick' })).toBeUndefined()
     expect(await ui.find({ type: 'Text', text: /^1\/10$/ })).toBeDefined()
     await ui.unmount()
   }
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  await ui.press({ key: 'tempo-up' })
+  await ui.press({ key: 'mood-sad' })
   expect(await ui.find({ key: 'key-up' })).toBeUndefined()
   expect(await ui.find({ key: 'scale-up' })).toBeUndefined()
   await ui.unmount()
   const code = await $.command.run({ command: 'techno', args: 'code' })
-  expect(code.text).toMatch(/k\dp0/)
+  expect(code.text).toMatch(/@122m2e0k0p0/)
 })
 
 test('play is lit first, then NEXT builds the track part by part to the done card', { timeoutMs: 30000 }, async ($, on) => {
@@ -131,7 +132,7 @@ test('play is lit first, then NEXT builds the track part by part to the done car
   expect((await ui.find({ key: 'play' }))?.props.variant).toBe('primary')
   await ui.press({ key: 'play' })
   expect((await ui.find({ key: 'do-move' }))?.props.variant).toBe('primary')
-  expect((await ui.find({ key: 'do-move' }))?.props.label).toContain('next: add the deep bass')
+  expect((await ui.find({ key: 'do-move' }))?.props.label).toContain('add deep bass ›')
   for (let i = 0; i < PLAN.length; i++) await ui.press({ key: 'do-move' })
   expect(await ui.find({ type: 'Text', text: /Your track is done/ })).toBeDefined()
   expect(await ui.find({ key: 'replay' })).toBeDefined()
@@ -142,14 +143,16 @@ test('play is lit first, then NEXT builds the track part by part to the done car
   await ui.unmount()
 })
 
-test('the share card shows the play line and copies it', async ($, on) => {
-  stubs(on)
+test('share saves an mp3, shows it in Finder, and copies the play line', async ($, on) => {
+  const calls: string[] = []
+  stubs(on, {}, (argv) => { calls.push(argv); return undefined })
   await start($)
   await $.command.run({ command: 'techno', args: 'ruslan' })
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
   await ui.press({ key: 'share' })
-  expect(await ui.find({ type: 'Text', text: /^\/techno ruslan@/ })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: /copied/ })).toBeDefined()
+  expect(calls.some((c) => c.startsWith('ffmpeg') && c.includes('.mp3'))).toBe(true)
+  expect(calls.some((c) => c.startsWith('open -R'))).toBe(true)
+  expect(await ui.find({ type: 'Text', text: /shown in Finder · play line copied/ })).toBeDefined()
   await ui.unmount()
 })
 
@@ -163,9 +166,9 @@ test('/techno hides the app, and a playing track shows a one-line player', async
   expect(await ui.find({ key: 'mini-auto' })).toBeDefined()
   expect(await ui.find({ key: 'mini-next' })).toBeDefined()
   expect(await ui.find({ key: 'mini-share' })).toBeDefined()
-  expect(await ui.find({ key: 'energy-up' })).toBeUndefined()
+  expect(await ui.find({ key: 'mood-sad' })).toBeUndefined()
   await ui.press({ key: 'mini-open' })
-  expect(await ui.find({ key: 'energy-up' })).toBeDefined()
+  expect(await ui.find({ key: 'mood-sad' })).toBeDefined()
   await ui.unmount()
 })
 
@@ -215,7 +218,7 @@ test('the bar closes with × and /techno brings the app back', async ($, on) => 
   await ui.press({ key: 'mini-close' })
   expect(await ui.find({ key: 'mini-play' })).toBeUndefined()
   await $.command.run({ command: 'techno', args: '' })
-  expect(await ui.find({ key: 'energy-up' })).toBeDefined()
+  expect(await ui.find({ key: 'mood-sad' })).toBeDefined()
   await ui.unmount()
 })
 
@@ -229,8 +232,8 @@ test('three moods, and each one sets the scale with it', async ($, on) => {
   expect(String(r.result)).toMatch(/m1e\dk3p0/)
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   await ui.press({ key: 'mood-dark' })
-  expect((await ui.find({ key: 'mood-dark' }))?.props.plain).toBeUndefined()
-  expect((await ui.find({ key: 'mood-sad' }))?.props.plain).toBe(true)
+  expect((await ui.find({ key: 'mood-dark' }))?.props.dimColor).toBe(false)
+  expect((await ui.find({ key: 'mood-sad' }))?.props.dimColor).toBe(true)
   await ui.unmount()
   expect((await $.command.run({ command: 'techno', args: 'code' })).text).toMatch(/m0e\dk2p0/)
   // an old code keeps its own mood and scale
@@ -245,20 +248,40 @@ test('the bar follows you into a new chat once you used techno', async ($, on) =
   await ui.unmount()
 })
 
-test('the top says what plays, where the name comes from, and what comes next', async ($, on) => {
+test('the top line says the kind of track, the progress and what comes next', async ($, on) => {
   stubs(on)
   await start($)
   await $.command.run({ command: 'techno', args: 'late night deploy' })
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ ...PANE, surface })
     await ui.drawn()
-    expect(await ui.find({ type: 'Text', text: /a starter track/ })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: /^kick$/ })).toBeDefined()
-    expect(await ui.find({ key: 'mood-mysterious' })).toBeDefined()
-    expect((await ui.find({ key: 'do-move' }))?.props.label).toMatch(/^(▸ )?next: add the deep bass ›$/)
+    expect(await ui.find({ type: 'Text', text: /^· (sad|mysterious|dark) · \d+ bpm$/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /^deep bass next$/ })).toBeDefined()
+    expect((await ui.find({ key: 'do-move' }))?.props.label).toMatch(/^(▸ )?add deep bass ›$/)
     expect((await ui.find({ key: 'dice' }))?.props.label).toBe('new rhythm')
     await ui.unmount()
   }
+})
+
+test('with auto on, the top line counts down to the next part', async ($, on) => {
+  stubs(on)
+  await start($)
+  await $.command.run({ command: 'techno', args: 'late night deploy' })
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await ui.press({ key: 'auto' })
+  expect(await ui.find({ type: 'Text', text: /^deep bass in$/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^0:\d\d$/ })).toBeDefined()
+  expect((await ui.find({ key: 'do-move' }))?.props.label).toMatch(/skip to deep bass ›$/)
+  await ui.unmount()
+})
+
+test('the voice says the track name in the peak, with the clips from say', async ($, on) => {
+  const calls: string[] = []
+  stubs(on, {}, (argv) => { calls.push(argv); return undefined })
+  await start($)
+  await $.command.run({ command: 'techno', args: 'ruslan@127m1e3k3p6' })
+  expect(calls.some((c) => c.includes('say -v') && c.includes('Whisper') && c.endsWith('ruslan'))).toBe(true)
+  expect(calls.some((c) => c.includes('Daniel'))).toBe(false)
 })
 
 test('with ffplay, one background player plays for every chat, and stop kills its group', async ($, on) => {

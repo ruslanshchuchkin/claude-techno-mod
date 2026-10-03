@@ -5,8 +5,9 @@
 // A click on a row name posts { toggle: layer } (mute). A click on a cell
 // posts { step: i, layer } (add or remove that hit in every bar).
 //
-// props: { rows: [[name, pattern, color, isOn, isMuted]], step, stepMs, playing, stamp }
+// props: { rows: [[name, pattern, color, isOn, isMuted, isNext]], step, stepMs, playing, stamp }
 // A layer the build has not brought in (or took out) is dim; one you muted is struck through.
+// The next sound of the build is a dashed row: where it will play, not yet clickable.
 const LABEL = 8
 const TOP = 2 // the header line and the beat ruler
 const cellX = (i) => LABEL + i * 3 + Math.floor(i / 4)
@@ -34,7 +35,7 @@ export default function Grid(props, surface) {
       const r = ev.y - TOP
       const row = ev.type === 'leave' ? null : rows[r]
       const i = row ? (ev.x < LABEL ? -1 : cellAt(ev.x)) : null
-      if (ev.type === 'down' && row) {
+      if (ev.type === 'down' && row && !row[5]) {
         if (i === -1) surface.post({ toggle: row[0] })
         else if (i !== null && i >= 0) surface.post({ step: i, layer: row[0] })
       }
@@ -86,7 +87,11 @@ export default function Grid(props, surface) {
       ),
     ],
   })
-  const rows = props.rows.map(([name, pattern, color, isOn, isMuted], r) => {
+  const rows = props.rows.map(([name, pattern, color, isOn, isMuted, isNext], r) => {
+    if (isNext) {
+      const cells = [...pattern].map((c, i) => Box({ key: name + i, width: 2, height: 1, marginRight: gap(i), children: [Text({ dimColor: true, children: [c !== '.' ? '▪▪' : '╌╌'] })] }))
+      return Box({ key: 'g-' + name, flexDirection: 'row', children: [Box({ key: 'l-' + name, width: LABEL, children: [Text({ dimColor: true, italic: true, children: [name] })] }), ...cells] })
+    }
     const label = Text({
       bold: isOn,
       dimColor: !isOn,

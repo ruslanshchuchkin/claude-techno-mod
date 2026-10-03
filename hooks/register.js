@@ -6,14 +6,14 @@
 // /techno              open the app
 // /techno <phrase>     a new track from the phrase (or from a share code)
 // /techno stop | save | code
-import { normalizePhrase, trackFor, atPart, cleanTrack, parseCode, encodeCode, describe, keyName, moodName, vibeOf, withVibe, VIBES, render, renderSet, toWav, grid, toggleStep, activeLayers, LAYERS, GRID_LAYERS, PLAN, ENERGIES, BPM_MIN, BPM_MAX } from './engine.js'
+import { normalizePhrase, trackFor, atPart, cleanTrack, parseCode, encodeCode, describe, keyName, decodeWav, moodName, vibeOf, withVibe, VIBES, render, renderSet, toWav, grid, toggleStep, activeLayers, LAYERS, GRID_LAYERS, PLAN, ENERGIES, BPM_MIN, BPM_MAX } from './engine.js'
 import { nextMove } from './coach.js'
 import { appView, miniView } from './views.js'
 
 const TOOL = 'mcp__techno__jam'
 // The plugin version, in the jam tool's answer and the player log, so a stale
 // module in an old chat shows itself. Keep it equal to plugin.json (a test checks).
-const VERSION = '0.6.1'
+const VERSION = '0.7.0'
 const GAIN = 0.7
 // [accent, normal] fill of a hit in the step grid
 const LAYER_COLORS = {
@@ -26,7 +26,7 @@ const LAYER_COLORS = {
   stab: ['#d0a6ff', '#a274e0'],
 }
 // What each sound is called in the pane, in the order it is listed
-const LAYER_WORDS = { kick: 'kick', bass: 'deep bass', hats: 'hats', rumble: 'rumble', perc: 'percussion', clap: 'clap', stab: 'dub chord', acid: 'acid riff' }
+const LAYER_WORDS = { kick: 'kick', bass: 'deep bass', hats: 'hats', rumble: 'rumble', perc: 'percussion', clap: 'clap', stab: 'dub chord', acid: 'acid riff', voice: 'voice' }
 const hearing = (on) => {
   const names = Object.keys(LAYER_WORDS).filter((n) => on[n]).map((n) => LAYER_WORDS[n])
   if (!names.length) return 'silence'
@@ -74,6 +74,8 @@ const s = {
   used: false,
   barClosed: false,
   barStored: false,
+  // the track's name in the macOS voices, for the phrase it was recorded for
+  voices: { phrase: '', clips: null },
   // the background player (see PLAYER_SH): its cache dir when ffplay is there, its pid
   dir: '',
   pid: 0,
@@ -229,10 +231,37 @@ async function syncPlayer($) {
   $.ui.invalidate('ui.render')
 }
 
+// ---------- the voice ----------
+// Free macOS voices say the track's name: Whisper over the peak and the
+// breakdown, Daniel (deep) on the drop. Recorded once per name with `say`,
+// read back as base64, decoded by the engine. No say (not macOS): no voice.
+const VOICES = [['whisper', 'Whisper', 150], ['deep', 'Daniel', 120]]
+const RECORD_SH = 'f="${TMPDIR:-/tmp}/techno-voice-$$.wav"; say -v "$1" -r "$2" -o "$f" --file-format=WAVE --data-format=LEI16@22050 -- "$3" && base64 -i "$f"; rc=$?; rm -f "$f"; exit $rc'
+
+const fromBase64 = (text) => (typeof Uint8Array.fromBase64 === 'function' ? Uint8Array.fromBase64(text) : Uint8Array.from(atob(text), (c) => c.charCodeAt(0)))
+const voicesFor = (phrase) => (s.voices.phrase === phrase ? s.voices.clips : null)
+
+async function loadVoices($, phrase) {
+  if (s.voices.phrase === phrase) return
+  s.voices = { phrase, clips: null }
+  try {
+    const clips = {}
+    for (const [name, voice, rate] of VOICES) {
+      const r = await $.process.run(['sh', '-c', RECORD_SH, 'sh', voice, String(rate), phrase], { timeoutMs: 15000 })
+      const text = r.stdout.replace(/\s+/g, '')
+      if (r.exitCode !== 0 || !text) return
+      clips[name] = decodeWav(fromBase64(text))
+      if (!clips[name]) return
+    }
+    if (s.voices.phrase === phrase) s.voices.clips = clips
+  } catch { /* no voice: the track plays without it */ }
+}
+
 // ---------- audio ----------
 
 async function startAudio($) {
-  const audio = render(s.track)
+  await loadVoices($, s.track.phrase)
+  const audio = render(s.track, { voices: voicesFor(s.track.phrase) })
   const loopMs = audio.seconds * 1000
   const now = await $.clock.now()
   // keep the beat: start the new loop at the same point in the bar
@@ -371,7 +400,8 @@ async function replay($) {
   if (!s.set.size) return
   s.status = 'rendering the set…'
   $.ui.invalidate('ui.render')
-  const audio = renderSet(setTracks())
+  await loadVoices($, s.track.phrase)
+  const audio = renderSet(setTracks(), { voices: voicesFor(s.track.phrase) })
   const wav = toWav(audio)
   if (s.dir) {
     try {
@@ -534,6 +564,16 @@ async function keep($) {
   $.ui.invalidate('ui.render')
 }
 
+// Share: one minute as an mp3 in ~/Music/techno, shown in Finder, and the
+// play line on the clipboard for a friend who has the mod.
+async function shareMp3($) {
+  await save($)
+  const where = s.status
+  await copyShare($)
+  if (where.startsWith('saved')) s.status = where + ' · shown in Finder · play line copied'
+  $.ui.invalidate('ui.render')
+}
+
 async function copyShare($) {
   let ok = false
   try {
@@ -638,7 +678,8 @@ const fileName = (t) => encodeCode(t).replace(/[@+*]/g, '_')
 async function save($) {
   const t = s.track
   if (!t) return 'Nothing to save yet. Start with /techno <phrase>.'
-  return writeAudio($, render(t), fileName(t), 4)
+  await loadVoices($, t.phrase)
+  return writeAudio($, render(t, { voices: voicesFor(t.phrase) }), fileName(t), 4)
 }
 
 // The whole build, from the first kick to the outro.
@@ -646,7 +687,8 @@ async function saveSet($) {
   if (!s.set.size) return save($)
   s.status = 'rendering the set…'
   $.ui.invalidate('ui.render')
-  return writeAudio($, renderSet(setTracks()), fileName(s.track) + '_set', 1)
+  await loadVoices($, s.track.phrase)
+  return writeAudio($, renderSet(setTracks(), { voices: voicesFor(s.track.phrase) }), fileName(s.track) + '_set', 1)
 }
 
 async function doMove($, id) {
@@ -667,7 +709,16 @@ export function register(on) {
     if (s.track && (await $.store.get('bar')) === true) { s.used = true; s.barStored = true }
     await loadRepo($)
     await playerInit($)
-    if (s.dir && !s.syncTimer) s.syncTimer = $.clock.every(2000, () => { syncPlayer($).catch(() => {}) })
+    // one tick a second: the countdown to the next part moves, and every
+    // second tick the chat follows the shared background player
+    if (!s.syncTimer) {
+      let n = 0
+      s.syncTimer = $.clock.every(1000, () => {
+        n++
+        if (s.dir && n % 2 === 0) syncPlayer($).catch(() => {})
+        if (s.auto && s.playing && !s.replaying) $.ui.invalidate('ui.render')
+      })
+    }
     await $.tool.register({
       name: 'jam',
       description:
@@ -779,6 +830,19 @@ export function register(on) {
     // the grid shows the layers this build has used so far, in a fixed order
     const all = t ? gridFor({ ...t, layers: Object.fromEntries(LAYERS.map((n) => [n, true])) }) : {}
     const rows = GRID_LAYERS.filter((n) => s.seen.has(n) || layersOn[n]).map((n) => [n, all[n], LAYER_COLORS[n], !!layersOn[n], t.layers[n] === false])
+    // what comes next, and when (auto moves on at a loop boundary)
+    let upcoming = null
+    if (t && !s.finished) {
+      if (!isBuilding(t)) upcoming = { name: 'the build', adds: false }
+      else if (t.part < PLAN.length - 1) upcoming = { name: PLAN[t.part + 1].name, adds: PLAN[t.part + 1].adds, layer: PLAN[t.part + 1].layer }
+      else upcoming = { name: 'the end', adds: false }
+      if (upcoming && s.auto && looping) {
+        const pos = (((now - s.startedAt) % s.loopMs) + s.loopMs) % s.loopMs
+        upcoming.inMs = Math.max(0, loopsFor(t) - s.autoLoops - 1) * s.loopMs + (s.loopMs - pos)
+      }
+    }
+    // the next sound as a dashed row, where it will play
+    if (upcoming?.layer && !rows.some((r) => r[0] === upcoming.layer)) rows.push([upcoming.layer, all[upcoming.layer] ?? '.'.repeat(16), LAYER_COLORS[upcoming.layer] ?? ['#888888', '#888888'], false, false, true])
     const vm = {
       surface: e.surface,
       screen: s.screen,
@@ -788,6 +852,7 @@ export function register(on) {
       desc: t ? describe(t) : '',
       key: t ? keyName(t) : '',
       mood: t ? moodName(t) : '',
+      next: upcoming,
       source: t ? sourceOf(t) : '',
       hearing: t ? hearing(layersOn) : '',
       playing: s.playing,
@@ -815,7 +880,7 @@ export function register(on) {
       dice: () => change($, (x) => { x.dice = (x.dice + 1) % 1000 }),
       undo: () => undo($),
       keep: () => keep($),
-      share: () => { s.showShare = true; return copyShare($) },
+      share: () => shareMp3($),
       copy: () => copyShare($),
       closeShare: () => { s.showShare = false; s.status = ''; redraw() },
       save: () => save($),

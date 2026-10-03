@@ -8,7 +8,8 @@ export const LAYERS = ['kick', 'bass', 'hats', 'clap', 'perc', 'acid', 'stab', '
 export const MOODS = ['pitch black', 'dark', 'deep', 'warm', 'bright']
 export const ENERGIES = ['minimal', 'rolling', 'driving', 'peak', 'rave']
 const NOTE_NAMES = ['c', 'c#', 'd', 'd#', 'e', 'f', 'f#', 'g', 'g#', 'a', 'a#', 'b']
-const KEY_CLASSES = [9, 5, 7, 2, 0, 4, 10, 1] // a, f, g, d, c, e, a#, c#
+// Low keys only: the sub root lands on e1..a1 (41..55 Hz), where techno sits.
+const KEY_CLASSES = [4, 5, 6, 7, 9, 5, 7, 9] // e, f, f#, g, a, f, g, a
 // The scales you can pick. Without a pick, the mood picks one:
 // pitch black phrygian, dark and deep minor, warm and bright dorian.
 export const SCALES = [
@@ -18,6 +19,20 @@ export const SCALES = [
   { name: 'hijaz', steps: [0, 1, 4, 5, 7, 8, 10] }, // arabic
   { name: 'harmonic', steps: [0, 2, 3, 5, 7, 8, 11] }, // dramatic
 ]
+// The three moods you pick from. Each sets the sound (the old mood number:
+// filters, rumble, room) and the scale together, so they never disagree.
+// Old codes keep their own m and k; a pair that is no preset shows its nearest.
+export const VIBES = [
+  { name: 'sad', mood: 2, scale: 0 }, // minor, a little more air
+  { name: 'mysterious', mood: 1, scale: 3 }, // hijaz, the arabic one
+  { name: 'dark', mood: 0, scale: 2 }, // phrygian, pitch black
+]
+export function vibeOf(t) {
+  const exact = VIBES.findIndex((v) => v.mood === t.mood && v.scale === scaleOf(t))
+  if (exact >= 0) return exact
+  return t.mood >= 2 ? 0 : scaleOf(t) === 3 ? 1 : t.mood === 0 ? 2 : 1
+}
+export const moodName = (t) => VIBES[vibeOf(t)].name
 const scaleOf = (t) => t.scale ?? (t.mood === 0 ? 2 : t.mood >= 3 ? 1 : 0)
 const CHORDS = [[0, 3, 7, 12], [0, 3, 7, 10], [0, 3, 7, 10], [0, 3, 7, 10, 14], [0, 5, 7, 10, 14]]
 export const BARS = 8
@@ -91,7 +106,9 @@ const toInt = (v, lo, hi, fallback) => (Number.isFinite(Number(v)) ? clamp(Math.
 export function trackFor(phrase) {
   const p = normalizePhrase(phrase) || 'techno'
   const r = rng(hash32('track:' + p))
-  return { phrase: p, bpm: 124 + Math.floor(r() * 12), mood: 1 + Math.floor(r() * 3), energy: 2, dice: 0, swing: 0, transpose: 0, scale: null, part: null, layers: {}, steps: {} }
+  const bpm = 124 + Math.floor(r() * 12)
+  const vibe = VIBES[Math.floor(r() * VIBES.length)]
+  return { phrase: p, bpm, mood: vibe.mood, energy: 2, dice: 0, swing: 0, transpose: 0, scale: vibe.scale, part: null, layers: {}, steps: {} }
 }
 
 // The track at a part of the build: the plan's energy, the plan's layers
@@ -126,7 +143,7 @@ export function cleanTrack(t) {
     dice: toInt(t?.dice, 0, 999, 0),
     swing: toInt(t?.swing, 0, 3, 0),
     transpose: toInt(t?.transpose, 0, 11, 0),
-    scale: t?.scale === null || t?.scale === undefined ? null : toInt(t.scale, 0, SCALES.length - 1, null),
+    scale: t?.scale === null ? null : t?.scale === undefined ? base.scale : toInt(t.scale, 0, SCALES.length - 1, null),
     part,
     layers,
     steps,
@@ -175,7 +192,7 @@ export function keyName(t) {
 }
 
 export function describe(t) {
-  return `${t.bpm} bpm · key ${keyName(t)} · mood ${MOODS[t.mood]} · energy ${ENERGIES[t.energy]}`
+  return `${t.bpm} bpm · key ${keyName(t)} · mood ${moodName(t)} · energy ${ENERGIES[t.energy]}`
 }
 
 // ---------- share codes ----------
@@ -289,11 +306,11 @@ export function arrange(input) {
       if (n) ev.acid.push({ step, ...n })
       // stab: the pattern shifts every other bar so the chords breathe
       const stabPattern = STAB_PATTERNS[(stabSlot + (bar % 2)) % STAB_PATTERNS.length]
-      if (stabPattern[s] === 'x') ev.stab.push({ step, notes: chordShape.map((i) => root + 36 + i), vel: 1 })
+      if (stabPattern[s] === 'x') ev.stab.push({ step, notes: chordShape.map((i) => root + 24 + i), vel: 1 })
     }
   }
   // your step edits: the same on/off mask in every bar of the loop
-  const chord = chordShape.map((i) => root + 36 + i)
+  const chord = chordShape.map((i) => root + 24 + i)
   const fresh = { kick: () => ({ vel: 1 }), hats: () => ({ vel: 0.8, open: false }), bass: () => ({ note: root, vel: 0.9 }), perc: () => ({ vel: 0.85, kind: percKind }), clap: () => ({ vel: 1 }), acid: () => ({ note: root + 24, accent: false, slide: false }), stab: () => ({ notes: chord, vel: 1 }) }
   for (const [name, [onMask, offMask]] of Object.entries(t.steps)) {
     ev[name] = ev[name].filter((e) => !(offMask & (1 << (e.step % STEPS))))

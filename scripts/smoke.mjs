@@ -51,7 +51,7 @@ let pane = await fire('ui.render', { component: 'Pane', requestId: 'techno', pro
 console.log(texts(pane).join('\n'))
 
 await fire('prompt.submit', { text: 'make it darker and add some acid' })
-r = await fire('tool.call', { tool: 'mcp__techno__jam', mood: 1, layers: { acid: true }, note: 'darker, acid on' })
+r = await fire('tool.call', { tool: 'mcp__techno__jam', mood: 'dark', layers: { acid: true }, note: 'darker, acid on' })
 console.log('\njam ->', r.result)
 pane = await fire('ui.render', { component: 'Pane', requestId: 'techno', props: {}, surface: 'terminal' })
 console.log(texts(pane).slice(-3).join('\n'))
@@ -59,7 +59,7 @@ console.log(texts(pane).slice(-3).join('\n'))
 r = await fire('command.run', { command: 'techno', args: 'code' })
 console.log('\n/techno code ->', r.text)
 r = await fire('command.run', { command: 'techno', args: r.text })
-console.log('/techno <code> -> same track again:', store.get('track').mood === 1 && store.get('track').layers.acid === true)
+console.log('/techno <code> -> same track again:', store.get('track').mood === 0 && store.get('track').layers.acid === true)
 
 r = await fire('command.run', { command: 'techno', args: 'save' })
 console.log('/techno save ->', r.text, calls.filter((c) => c[0] === 'process.run').map((c) => c[1]).join(','))

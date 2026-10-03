@@ -65,6 +65,15 @@ Needs Claude Code v2.1.287 or later (built and checked on v2.1.288).
   pick (old behaviour), or an index into `SCALES`: minor, dorian, phrygian,
   hijaz (arabic), harmonic. A picked scale stacks its own dub chord. The deck
   has `key` (transpose) and `scale` steppers; the jam tool takes `scale` by name.
+- **Three moods, mood = scale** (Ruslan, 2026-10-03: "mood and scale should
+  kinda be the same ... only 3 that techno does - not funny, but sad and dark
+  and mysterious"). `VIBES` in engine.js: sad (mood 2, minor), mysterious
+  (mood 1, hijaz), dark (mood 0, phrygian). The mood stepper and the jam tool's
+  `mood` pick one by name and set `mood` and `scale` together. No key or scale
+  stepper. A new phrase picks a random vibe. Old codes keep their m and k.
+- **Low keys** (same request: "make it lower ... deeper and heavier"). The
+  phrase picks e, f, f#, g or a, so the sub root is e1..a1 (41..55 Hz). The
+  dub chord sits two octaves over the root (e3..a3).
 - **The bar in every chat** (Ruslan, 2026-10-03: "make the techno plugin
   persistent over different chats"). `$.store` is global, so the track and the
   kept list were already shared. Now `bar: true` in the store makes a new

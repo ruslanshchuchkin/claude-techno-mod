@@ -41,15 +41,15 @@ test('/techno <phrase> starts the build at the kick, and /techno code prints its
   await start($)
   await $.command.run({ command: 'techno', args: 'late night deploy' })
   const code = await $.command.run({ command: 'techno', args: 'code' })
-  expect(code.text).toMatch(/^\/techno late-night-deploy@\d{3}m\de0p0$/)
+  expect(code.text).toMatch(/^\/techno late-night-deploy@\d{3}m\de0k\dp0$/)
 })
 
 test('the jam tool changes mood and layers, and the share line carries them', async ($, on) => {
   stubs(on)
   await start($)
   await $.command.run({ command: 'techno', args: 'ruslan' })
-  const r = await $.tool.call({ tool: 'mcp__techno__jam', mood: 0, layers: { acid: true, hats: false } })
-  expect(String(r.result)).toContain('pitch black')
+  const r = await $.tool.call({ tool: 'mcp__techno__jam', mood: 'dark', layers: { acid: true, hats: false } })
+  expect(String(r.result)).toContain('mood dark')
   expect(String(r.result)).toContain('+acid')
   expect(String(r.result)).toContain('-hats')
 })
@@ -113,11 +113,11 @@ test('the deck has energy, mood and tempo, a grid, and no layer chips', async ($
   }
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   await ui.press({ key: 'tempo-up' })
-  await ui.press({ key: 'key-up' })
-  await ui.press({ key: 'scale-up' })
+  expect(await ui.find({ key: 'key-up' })).toBeUndefined()
+  expect(await ui.find({ key: 'scale-up' })).toBeUndefined()
   await ui.unmount()
   const code = await $.command.run({ command: 'techno', args: 'code' })
-  expect(code.text).toMatch(/t1k\dp0/)
+  expect(code.text).toMatch(/k\dp0/)
 })
 
 test('play is lit first, then NEXT builds the track part by part to the done card', { timeoutMs: 30000 }, async ($, on) => {
@@ -217,16 +217,23 @@ test('the bar closes with × and /techno brings the app back', async ($, on) => 
   await ui.unmount()
 })
 
-test('a picked scale rides in the share code, and the jam tool picks one by name', async ($, on) => {
+test('three moods, and each one sets the scale with it', async ($, on) => {
   stubs(on)
   await start($)
   await $.command.run({ command: 'techno', args: 'ruslan' })
-  const r = await $.tool.call({ tool: 'mcp__techno__jam', scale: 'hijaz' })
+  const r = await $.tool.call({ tool: 'mcp__techno__jam', mood: 'mysterious' })
   expect(String(r.result)).toContain('hijaz')
-  expect(String(r.result)).toMatch(/k3p0/)
-  expect(encodeCode(parseCode('ruslan@130m1e2k3p4')!)).toBe('ruslan@130m1e2k3p4')
-  const back = await $.tool.call({ tool: 'mcp__techno__jam', scale: 'auto' })
-  expect(String(back.result)).not.toMatch(/k\d/)
+  expect(String(r.result)).toContain('mood mysterious')
+  expect(String(r.result)).toMatch(/m1e\dk3p0/)
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await ui.press({ key: 'mood-up' })
+  expect(await ui.find({ type: 'Text', text: 'dark' })).toBeDefined()
+  await ui.press({ key: 'mood-up' })
+  expect(await ui.find({ type: 'Text', text: 'dark' })).toBeDefined()
+  await ui.unmount()
+  expect((await $.command.run({ command: 'techno', args: 'code' })).text).toMatch(/m0e\dk2p0/)
+  // an old code keeps its own mood and scale
+  expect(encodeCode(parseCode('ruslan@130m3e2p4')!)).toBe('ruslan@130m3e2p4')
 })
 
 test('the bar follows you into a new chat once you used techno', async ($, on) => {

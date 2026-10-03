@@ -37,11 +37,21 @@ function header(ui, vm, act, middle) {
 }
 
 function nowPlaying(ui, vm, act) {
-  return row(ui, [
-    btn(ui, vm, 'play', vm.playing ? '■ stop' : '▶ play', () => (vm.playing ? act.stop() : act.play()), { hotkey: 'p' }),
-    ui.Text({ bold: true, wrap: 'truncate-end', children: [vm.track.phrase] }),
-    dim(ui, '· key ' + vm.key, { wrap: 'truncate-end' }),
-  ])
+  const part = vm.track.part
+  const where = part === null || part === undefined ? 'full track' : `${part + 1}/${PLAN.length}`
+  return ui.Box({
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    children: [
+      row(ui, [
+        btn(ui, vm, 'play', vm.playing ? '■ stop' : '▶ play', () => (vm.playing ? act.stop() : act.play()), { hotkey: 'p' }),
+        ui.Text({ bold: true, wrap: 'truncate-end', children: [vm.track.phrase] }),
+        dim(ui, '· ' + vm.key, { wrap: 'truncate-end' }),
+      ]),
+      dim(ui, where),
+    ],
+  })
 }
 
 function stepper(ui, vm, name, value, down, up) {
@@ -68,27 +78,40 @@ function actions(ui, vm, act) {
   ])
 }
 
-// Where you are in the track: the seven sections, the current one inverted.
+// Where you are in the track: the seven sections in a row, the current one
+// inverted, and under it what you hear now. The tip hangs from the current
+// section (absolute, in cells), so it lines up in any font.
 function timeline(ui, vm) {
   const part = vm.track.part
   const cur = part === null || part === undefined ? -1 : SECTIONS.indexOf(PLAN[part].section)
   const parts = []
   SECTIONS.forEach((p, i) => {
-    if (i) parts.push(ui.Text({ key: 'sep' + i, dimColor: true, children: ['─'] }))
-    parts.push(ui.Text({ key: 'part-' + p, bold: i === cur, inverse: i === cur, dimColor: cur >= 0 && i > cur, children: [i === cur ? ' ' + p + ' ' : p] }))
+    if (i) parts.push(ui.Text({ key: 'sep' + i, dimColor: true, children: ['·'] }))
+    const name = ui.Text({ bold: i === cur, inverse: i === cur, dimColor: cur >= 0 && i > cur, children: [i === cur ? ' ' + p + ' ' : p] })
+    if (i !== cur) { parts.push(ui.Box({ key: 'part-' + p, children: [name] })); return }
+    const tip = ui.Box({ position: 'absolute', top: 1, left: 1, children: [dim(ui, '↳ ' + vm.move.tip, { wrap: 'truncate-end' })] })
+    parts.push(ui.Box({ key: 'part-' + p, children: [name, tip] }))
   })
-  const where = cur >= 0 ? `part ${part + 1} of ${PLAN.length}` : 'full track'
-  return row(ui, [ui.Box({ flexDirection: 'row', columnGap: 1, children: parts }), dim(ui, where)], { columnGap: 2 })
+  return ui.Box({ flexDirection: 'row', columnGap: 1, children: parts })
 }
 
-// What you hear now, and the NEXT button that adds the next part.
+// The NEXT button that adds the next part, and auto. Without a part (the full
+// track) the tip sits here, since no section is lit to hang it from.
 function nextLine(ui, vm, act) {
-  return row(ui, [
-    dim(ui, 'now ›'),
-    ui.Text({ wrap: 'truncate-end', children: [vm.move.tip] }),
-    vm.move.label ? btn(ui, vm, 'do-move', vm.move.label + ' ›', () => act.doMove(), { hotkey: 'n' }) : null,
-    btn(ui, vm, 'auto', vm.auto ? '● auto' : '○ auto', () => act.auto(), { hotkey: 'a' }),
-  ])
+  const part = vm.track.part
+  const loose = part === null || part === undefined
+  return ui.Box({
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    children: [
+      loose ? dim(ui, vm.move.tip, { wrap: 'truncate-end' }) : ui.Box({ flexGrow: 1 }),
+      row(ui, [
+        vm.move.label ? btn(ui, vm, 'do-move', vm.move.label + ' ›', () => act.doMove(), { hotkey: 'n' }) : null,
+        btn(ui, vm, 'auto', vm.auto ? '● auto' : '○ auto', () => act.auto(), { hotkey: 'a' }),
+      ]),
+    ],
+  })
 }
 
 function talkLine(ui, vm) {

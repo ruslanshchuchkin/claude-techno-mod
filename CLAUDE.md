@@ -70,6 +70,12 @@ Needs Claude Code v2.1.287 or later (built and checked on v2.1.288).
   kept list were already shared. Now `bar: true` in the store makes a new
   session show the bar (paused, same track) until its ×. A new chat never
   starts audio by itself: two chats would play over each other.
+- **Header layout B, "one line"** (Ruslan, 2026-10-03: "I like B bc it's
+  cleaner", with the "next:" label from A). Row 1: play, the phrase, the key,
+  and `n/10` on the right. Row 2: the seven sections joined by `·`, the current
+  one inverted. Under it, `↳ tip` hangs from the current section as an
+  absolute Box (cells, so it lines up in any font). Row 3: `next: + ... ›` and
+  auto on the right. Tips in `PLAN` are short fragments, no full stop.
 - **The done card** (Ruslan, 2026-10-03): replay the set, save the set as mp3,
   remix it (dice + 1, step edits cleared, back to the kick), keep, share, new
   track. The set is the state you left each part in, so tweaks and step edits

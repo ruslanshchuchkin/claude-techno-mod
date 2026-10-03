@@ -108,7 +108,7 @@ test('the deck has energy, mood and tempo, a grid, and no layer chips', async ($
     expect(await ui.find({ key: 'grid' })).toBeDefined()
     expect(await ui.find({ key: 'energy-up' })).toBeDefined()
     expect(await ui.find({ key: 'layer-kick' })).toBeUndefined()
-    expect(await ui.find({ type: 'Text', text: /part 1 of/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /^1\/10$/ })).toBeDefined()
     await ui.unmount()
   }
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
@@ -136,7 +136,7 @@ test('play is lit first, then NEXT builds the track part by part to the done car
   expect(await ui.find({ key: 'save-set' })).toBeDefined()
   await ui.press({ key: 'remix' })
   expect(await ui.find({ type: 'Text', text: /Your track is done/ })).toBeUndefined()
-  expect(await ui.find({ type: 'Text', text: /part 1 of/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^1\/10$/ })).toBeDefined()
   await ui.unmount()
 })
 
@@ -235,4 +235,17 @@ test('the bar follows you into a new chat once you used techno', async ($, on) =
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   expect(await ui.find({ key: 'mini-play' })).toBeDefined()
   await ui.unmount()
+})
+
+test('the tip hangs under the current section, and NEXT says what comes next', async ($, on) => {
+  stubs(on)
+  await start($)
+  await $.command.run({ command: 'techno', args: 'ruslan' })
+  for (const surface of ['terminal', 'desktop'] as const) {
+    const ui = await $.ui.mount({ ...PANE, surface })
+    await ui.drawn()
+    expect(await ui.find({ type: 'Text', text: /^↳ / })).toBeDefined()
+    expect((await ui.find({ key: 'do-move' }))?.props.label).toMatch(/^(▸ )?next: \+ sub bass ›$/)
+    await ui.unmount()
+  }
 })

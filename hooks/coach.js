@@ -17,6 +17,6 @@ export function nextMove(track, { playing, finished }) {
     id: last ? 'finish' : 'advance',
     key: playing ? 'do-move' : 'play',
     label: last ? 'finish the track' : 'next: ' + PLAN[part + 1].go,
-    tip: playing ? here.tip : 'Press play to hear it.',
+    tip: playing ? here.tip : 'press play to hear it',
   }
 }

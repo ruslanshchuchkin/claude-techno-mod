@@ -589,7 +589,7 @@ export function register(on) {
     const now = await $.clock.now()
     const coach = nextMove(t, { playing: s.playing && !s.replaying, finished: s.finished })
     // in auto the mod presses NEXT itself, so nothing else is lit and the tip says when
-    const move = s.auto && s.playing && coach.key === 'do-move' ? { ...coach, key: 'auto', tip: coach.tip + ' Auto moves on at the end of the loop.' } : coach
+    const move = s.auto && s.playing && coach.key === 'do-move' ? { ...coach, key: 'auto', tip: coach.tip + ' · auto moves on next loop' } : coach
     const code = t ? encodeCode(t) : ''
     const layersOn = t ? activeLayers(t) : {}
     const looping = s.playing && !s.replaying && s.loopMs

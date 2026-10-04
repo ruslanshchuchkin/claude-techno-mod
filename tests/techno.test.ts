@@ -113,7 +113,7 @@ test('the deck: play, the track and its mood, previous, favorite, auto; mood, ne
   await $.command.run({ command: 'techno', args: '' })
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ ...PANE, surface })
-    for (const key of ['play', 'fav', 'auto', 'grid', 'mood-sad', 'mood-mysterious', 'mood-dark', 'edit', 'favorites']) expect(await ui.find({ key })).toBeDefined()
+    for (const key of ['play', 'skip', 'fav', 'auto', 'where', 'grid', 'mood-sad', 'mood-mysterious', 'mood-dark', 'edit', 'favorites']) expect(await ui.find({ key })).toBeDefined()
     // auto is on: the set moves by itself, so there is no next part button
     expect(await ui.find({ key: 'next' })).toBeUndefined()
     expect((await ui.find({ key: 'auto' }))?.props.variant).toBe('primary')
@@ -124,6 +124,8 @@ test('the deck: play, the track and its mood, previous, favorite, auto; mood, ne
     await ui.unmount()
   }
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await ui.press({ key: 'skip' })
+  expect(player.cmds.at(-1)).toMatchObject({ op: 'skip' })
   await ui.press({ key: 'auto' })
   expect(player.auto).toBe(false)
   await ui.press({ key: 'next' })
@@ -167,14 +169,14 @@ test('a click on a grid cell edits a step, and a click on a row name toggles the
   }
 })
 
-test('hidden, the app is a one-line bar with play, previous, favorite, auto and next track', async ($, on) => {
+test('hidden, the app is a one-line bar with previous, play, next track, favorite, then auto, open and × on the right', async ($, on) => {
   const { player } = stubs(on)
   await start($)
   await $.command.run({ command: 'techno', args: 'ruslan' })
   await $.command.run({ command: 'techno', args: 'ship it' })
   await $.command.run({ command: 'techno', args: '' })
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  for (const key of ['mini-play', 'mini-prev', 'mini-fav', 'mini-auto', 'mini-next']) expect(await ui.find({ key })).toBeDefined()
+  for (const key of ['mini-play', 'mini-prev', 'mini-skip', 'mini-fav', 'mini-auto', 'mini-open']) expect(await ui.find({ key })).toBeDefined()
   await ui.press({ key: 'mini-prev' })
   expect(player.set.track.phrase).toBe('ruslan')
   await ui.press({ key: 'mini-close' })

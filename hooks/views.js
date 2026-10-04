@@ -3,10 +3,12 @@
 // handlers (`act`), and return a tree. No mods API here; register.js owns
 // the calls to the player.
 //
-// Layout A (Ruslan, 2026-10-03): one line on top (previous and play side by
-// side, the track and its mood, favorite, auto), the grid, one line under it (mood, next
-// part, edit, favorites), and the edit line when edit is open. Three screens:
-// the deck, the favorites (with the tracks you heard), and new tracks.
+// Layout A with the skyline (Ruslan, 2026-10-04): one line on top (previous,
+// play and next track side by side, the track, favorite, mood and tempo; auto
+// and hide on the right), the skyline of the set, the grid, one line under it
+// (mood, next part, edit, favorites), and the edit line when edit is open.
+// Three screens: the deck, the favorites (with the tracks you heard), and new
+// tracks.
 //
 // A selected thing (the mood, auto on) is a filled primary button, not
 // brighter text: dim against normal text cannot be read in the light theme.
@@ -19,31 +21,47 @@ const spread = (ui, left, right, key) => ui.Box({ key, flexDirection: 'row', jus
 // A button that is on or off: on is the filled primary button.
 const toggle = (ui, key, label, isOn, onPress, extra = {}) => ui.Button({ key, label, onPress, ...(isOn ? { variant: 'primary' } : {}), ...extra })
 const link = (ui, key, label, onPress) => ui.Button({ key, label, plain: true, dimColor: true, onPress })
-const clock = (ms) => { const s = Math.ceil(ms / 1000); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0') }
+const clock = (ms) => { const s = Math.floor(ms / 1000); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0') }
+
+// The transport, shared by the deck and the bar: previous, play or stop,
+// next track, then the track, its heart, mood and tempo.
+function transport(ui, vm, act, prefix) {
+  const v = vm.view
+  return [
+    vm.recent.length ? ui.Button({ key: prefix + 'prev', label: '⏮', onPress: () => act.prev() }) : null,
+    toggle(ui, prefix + 'play', vm.playing ? '■ stop' : '▶ play', !vm.playing, () => (vm.playing ? act.stop() : act.play()), prefix ? {} : { hotkey: 'p' }),
+    ui.Button({ key: prefix + 'skip', label: '⏭', onPress: () => act.skip() }),
+    ui.Text({ bold: true, wrap: 'truncate-end', children: [v.phrase] }),
+    ui.Button({ key: prefix + 'fav', label: vm.fav ? '♥' : '♡', plain: true, onPress: () => act.fav() }),
+    dim(ui, '· ' + v.mood + ' · ' + v.bpm + ' bpm'),
+  ]
+}
 
 function topLine(ui, vm, act) {
-  const v = vm.view
-  return spread(ui, [
-    vm.recent.length ? ui.Button({ key: 'prev', label: '⏮', onPress: () => act.prev() }) : null,
-    toggle(ui, 'play', vm.playing ? '■ stop' : '▶ play', !vm.playing, () => (vm.playing ? act.stop() : act.play()), { hotkey: 'p' }),
-    ui.Text({ bold: true, wrap: 'truncate-end', children: [v.phrase] }),
-    dim(ui, '· ' + v.mood),
-    v.from ? dim(ui, '← mixing in from ' + v.from, { wrap: 'truncate-end' }) : null,
-  ], [
-    ui.Button({ key: 'fav', label: vm.fav ? '♥' : '♡', onPress: () => act.fav() }),
+  return spread(ui, transport(ui, vm, act, ''), [
     toggle(ui, 'auto', vm.auto ? '● auto' : '○ auto', vm.auto, () => act.auto(), { hotkey: 'a' }),
     ui.Button({ key: 'close', label: 'hide', role: 'dismiss', plain: true, dimColor: true, onPress: () => act.close() }),
   ], 'top')
 }
 
-// Where the set is: the part, and what comes next (with auto, when).
+// The skyline: the shape of the set, two cells a loop, a low block calm and a
+// tall one a drop. What played is in the text color, the cell that plays now
+// in the accent, the rest dim. Then the part and the time in the set.
+const BLOCKS = ['▁', '▂', '▄', '█']
 function whereLine(ui, vm) {
-  const v = vm.view
-  const next = v.next?.name
+  const v = vm.view, w = vm.where
+  if (!w) return null
+  const cells = w.shape.map((e) => BLOCKS[Math.min(3, e)])
+  const at = Math.min(w.cell, cells.length)
   return row(ui, [
-    ui.Text({ bold: true, children: [v.section === 'handover' ? 'handover' : v.name] }),
-    next ? dim(ui, '→ ' + next + (vm.auto && vm.nextIn !== null ? ' in' : vm.auto ? '' : ' next')) : null,
-    next && vm.auto && vm.nextIn !== null ? ui.Text({ bold: true, children: [clock(vm.nextIn)] }) : null,
+    ui.Box({ flexDirection: 'row', children: [
+      ui.Text({ children: [cells.slice(0, at).join('')] }),
+      at < cells.length ? ui.Text({ color: 'claude', bold: true, children: [cells[at]] }) : null,
+      at + 1 < cells.length ? dim(ui, cells.slice(at + 1).join('')) : null,
+    ].filter(Boolean) }),
+    v.section === 'handover' ? ui.Text({ color: 'claude', bold: true, children: ['mixing in'] }) : ui.Text({ color: 'claude', bold: true, children: [v.name] }),
+    v.from ? dim(ui, '← from ' + v.from, { wrap: 'truncate-end' }) : null,
+    dim(ui, '· ' + clock(w.elapsed) + ' / ' + clock(w.total)),
   ], { key: 'where', columnGap: 1 })
 }
 
@@ -137,20 +155,18 @@ export function appView(ui, vm, act) {
   return col(ui, [...body, vm.status ? dim(ui, vm.status, { key: 'status', wrap: 'truncate-end' }) : null], { borderStyle: 'round', paddingX: 1 })
 }
 
-// The bar above the chat box while the app is hidden: play or stop, the
-// track, previous, favorite, auto, next track, open, and × to close it.
+// The bar above the chat box while the app is hidden: the same transport as
+// the deck, the part, then auto, open and × on the right.
 export function miniView(ui, vm, act) {
-  if (!vm.view) return row(ui, [ui.Text({ bold: true, children: ['♪'] }), dim(ui, vm.down || 'starting the player…'), link(ui, 'mini-close', '×', () => act.closeBar())], { columnGap: 2 })
-  return row(ui, [
+  if (!vm.view) return spread(ui, [ui.Text({ bold: true, children: ['♪'] }), dim(ui, vm.down || 'starting the player…')], [link(ui, 'mini-close', '×', () => act.closeBar())], 'mini')
+  const v = vm.view
+  return spread(ui, [
     ui.Text({ bold: true, children: ['♪'] }),
-    vm.recent.length ? ui.Button({ key: 'mini-prev', label: '⏮', onPress: () => act.prev() }) : null,
-    toggle(ui, 'mini-play', vm.playing ? '■ stop' : '▶ play', !vm.playing, () => (vm.playing ? act.stop() : act.play())),
-    ui.Text({ bold: true, wrap: 'truncate-end', children: [vm.view.phrase] }),
-    dim(ui, vm.view.mood + ' · ' + (vm.view.section === 'handover' ? 'handover' : vm.view.name)),
-    ui.Button({ key: 'mini-fav', label: vm.fav ? '♥' : '♡', onPress: () => act.fav() }),
+    ...transport(ui, vm, act, 'mini-'),
+    ui.Text({ color: 'claude', children: [v.section === 'handover' ? 'mixing in' : v.name] }),
+  ], [
     toggle(ui, 'mini-auto', vm.auto ? '● auto' : '○ auto', vm.auto, () => act.auto()),
-    ui.Button({ key: 'mini-next', label: '⏭ next track', onPress: () => act.skip() }),
     link(ui, 'mini-open', 'open', () => act.open()),
     link(ui, 'mini-close', '×', () => act.closeBar()),
-  ], { columnGap: 2 })
+  ], 'mini')
 }

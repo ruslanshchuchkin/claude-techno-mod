@@ -27,10 +27,39 @@ Needs Claude Code v2.1.287 or later (built and checked on v2.1.288).
 | `player/TechnoPlayer.swift` | The helper app: plays the bars gaplessly (AVAudioSourceNode), shows "Now Playing" in Control Center, passes the media keys back. The player compiles it with `swiftc` into `~/Library/Caches/techno/TechnoPlayer.app` when the source changes. |
 | `scripts/set.mjs` | Render a whole auto set with the handover to a WAV: `node scripts/set.mjs "ship it" "warehouse 4am" out.wav`. |
 | `scripts/render.mjs` | Render one loop to a WAV: `node scripts/render.mjs "phrase" out.wav [repeats]`. |
-| `scripts/smoke.mjs` | Fast node checks: version match, every part renders, the handover renders. |
+| `scripts/buildups.mjs` | Render the build into drop 1 once per build-up pack (`0-now`, `1-riser`, `2-filter`, `3-echo`) to compare them: `node scripts/buildups.mjs "late night deploy" previews/buildups`. |
+| `scripts/smoke.mjs` | Fast node checks: version match, every part renders, the handover renders, every build-up pack renders. |
 | `tests/techno.test.ts` | Real tests for `claude plugin test`, against a fake player on the socket. |
 
 ## Decisions
+
+### 0.8.3 (Ruslan, 2026-10-04), these win over older notes below
+
+- **Auto makes everything; manual is where you make it** ("i want auto to
+  make everything for me"). Auto picks the parts, the transitions, and later
+  the filters and the master filters by itself. Manual (a button, not yet
+  built) holds the song on its part and lets you change: the sample (the
+  instrument), the pattern, the notes (with suggested ones from the scale of
+  the mood), the plan itself (remove a part such as groove, add a part you
+  pick, with a recommended one), and filters per sound plus master filters.
+  Step by step: auto first, manual after.
+- **The deck top line**: ⏮ ■ ⏭ side by side on the left (⏭ is always the
+  next track, `skip`), then the track, ♡, `· mood · bpm`. On the right: auto,
+  hide. The "drop 3 → outro" line is gone.
+- **The skyline, option B** (picked from A inline bar, B skyline, C named
+  sections). One line under the top: the shape of the set, two cells a loop
+  (`▁` calm .. `█` drop), played cells in the text color, the cell that
+  plays now in the accent (`claude` theme key), the rest dim, then the part
+  name and `4:15 / 6:45`. `where` in the view model (register.js) holds the
+  shape, the cell and the times; `whereLine` in views.js draws it.
+- **The bar uses the same transport** (`transport()` in views.js): ♪ ⏮ ■ ⏭,
+  the track, ♡, mood and bpm, the part; auto, open and × stick to the right.
+- **Build-up packs, pick pending** (`build` in `mixdown`, `BUILDS`):
+  `riser` (an 8-bar riser, a clap roll that speeds up), `filter` (the mix
+  closes into a resonant low-pass, then one beat of silence), `echo` (the
+  bass fades out, the last bar is one clap thrown into a long echo, a
+  reversed crash). Each puts a boom under the drop. `build: null` is the 0.8
+  sound, and the player still plays that until Ruslan picks.
 
 ### 0.8 (Ruslan, 2026-10-03), these win over older notes below
 
@@ -64,7 +93,7 @@ Needs Claude Code v2.1.287 or later (built and checked on v2.1.288).
   delay"). The player streams bars, not 15 s loops: it renders the next loop
   at bar 4 of the current one, keeps two bars queued, and an edit drops the
   queued bars and lands on the next bar.
-- **The deck, layout A** (must-haves from Ruslan: play/stop, the track and its
+- **The deck, layout A** (0.8.3 changed its top line, see above; must-haves from Ruslan: play/stop, the track and its
   mood, auto, next when auto is off, mood, the grid stays "it makes the app
   alive", edit as a separate button, favorites, previous track). Top: ⏮, play,
   name · mood, ♡, auto, hide. Then the part and what is next (a

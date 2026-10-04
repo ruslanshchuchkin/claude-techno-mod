@@ -789,6 +789,26 @@ function renderRiser(buf, sr, from, len, noise) {
   }
 }
 
+// The boom under a drop's first beat: a sine that falls to the sub, driven.
+function renderBoom(buf, sr, at, f1) {
+  const start = Math.round(at * sr)
+  const len = Math.min(Math.round(1.8 * sr), buf.length - start)
+  let ph = 0
+  for (let i = 0; i < len; i++) {
+    const t = i / sr
+    ph += (f1 + (95 - f1) * Math.exp(-t / 0.09)) / sr
+    buf[start + i] += Math.tanh(Math.sin(TAU * ph) * 1.8) * Math.min(1, t / 0.003) * Math.exp(-t / 0.55)
+  }
+}
+
+// A crash played backwards: it swells into the drop and ends on the loop point.
+function renderReverseCrash(buf, sr, end, len, noise) {
+  const tmp = new Float32Array(len)
+  renderCrash(tmp, sr, 0, noise)
+  const from = end - len
+  for (let i = 0; i < len; i++) if (from + i >= 0 && from + i < buf.length) buf[from + i] += tmp[len - 1 - i] * 1.4
+}
+
 // The crash on the first beat of a drop.
 function renderCrash(buf, sr, at, noise) {
   const start = Math.round(at * sr)
@@ -816,7 +836,14 @@ const TAIL_SECONDS = 2.5
 // tail (reverb, delay, the last hits) after the loop still separate.
 // opts.rise: a riser over the last four bars and no kick in the last bar.
 // opts.impact: a crash on the first beat.
-export function mixdown(input, { sampleRate = 44100, voices = null, rise = false, impact = false } = {}) {
+// opts.build: how the loop before a drop builds up (null: the 0.8 riser).
+//   'riser'  a riser over all 8 bars and a clap roll that speeds up
+//   'filter' the whole mix closes into a low-pass, then one beat of silence
+//   'echo'   the bass fades out, the last bar is one clap thrown into the
+//            echo, and a reversed crash swells into the drop
+// Each of them puts a boom under the drop that follows.
+export const BUILDS = ['riser', 'filter', 'echo']
+export function mixdown(input, { sampleRate = 44100, voices = null, rise = false, impact = false, build = null } = {}) {
   const a = arrange(input)
   const t = a.track
   const sr = sampleRate
@@ -853,8 +880,13 @@ export function mixdown(input, { sampleRate = 44100, voices = null, rise = false
   for (const e of a.events.hats) stamp(hats, e.open ? openHat : closedHats[e.step % 2], stepAt(e.step, true), e.vel, sr)
   const clapHit = template(sr, 0.35, (b) => renderClap(b, sr, 0, 1, noise))
   for (const e of a.events.clap) stamp(clap, clapHit, stepAt(e.step, false), e.vel, sr)
-  // a clap roll into the drop
-  if (rise && a.on.clap) for (let s = 8; s < STEPS; s++) stamp(clap, clapHit, stepAt(lastBar + s, false), 0.25 + 0.06 * (s - 8), sr)
+  // a clap roll into the drop: the 'riser' build speeds it up over four bars
+  if (rise && build === 'riser') {
+    for (let s = 4 * STEPS; s < BARS * STEPS; s++) {
+      const every = s < 6 * STEPS ? 4 : s < lastBar ? 2 : 1
+      if (s % every === 0) stamp(clap, clapHit, stepAt(s, false), 0.18 + 0.55 * ((s - 4 * STEPS) / (4 * STEPS)), sr)
+    }
+  } else if (rise && build !== 'echo' && a.on.clap) for (let s = 8; s < STEPS; s++) stamp(clap, clapHit, stepAt(lastBar + s, false), 0.25 + 0.06 * (s - 8), sr)
   const percPitch = 140 + r() * 120
   const percHit = template(sr, 0.3, (b) => renderPerc(b, sr, 0, 1, a.percKind, percPitch, noise))
   for (const e of a.events.perc) stamp(perc, percHit, stepAt(e.step, true), e.vel, sr)
@@ -874,8 +906,24 @@ export function mixdown(input, { sampleRate = 44100, voices = null, rise = false
   for (const e of a.events.stab) renderStab(stab, sr, stepAt(e.step, false), e.notes, e.vel, stabCut, noise)
   for (const e of a.events.pad) renderPad(pad, sr, loop, e.notes, 380 + t.mood * 90, noise)
 
-  if (rise) renderRiser(fx, sr, Math.round(4 * STEPS * a.stepSeconds * sr), loop - Math.round(4 * STEPS * a.stepSeconds * sr), noise)
+  const barLen = Math.round(STEPS * a.stepSeconds * sr)
+  const lastBarAt = loop - barLen
+  if (rise && build === 'riser') renderRiser(fx, sr, 0, loop, noise)
+  else if (rise && build !== 'echo') renderRiser(fx, sr, Math.round(4 * STEPS * a.stepSeconds * sr), loop - Math.round(4 * STEPS * a.stepSeconds * sr), noise)
   if (impact) renderCrash(fx, sr, 0, noise)
+  const boom = impact && build ? bus() : null
+  if (boom) renderBoom(boom, sr, 0, tail)
+  // the echo build: the bass fades out over four bars, the last bar keeps
+  // only one clap thrown into a long echo, and a reversed crash
+  const toss = rise && build === 'echo' ? bus() : null
+  if (toss) {
+    const fadeFrom = loop - 4 * barLen
+    for (let i = fadeFrom; i < total; i++) bass[i] *= i >= lastBarAt ? 0 : 1 - (i - fadeFrom) / (3 * barLen)
+    const cut = (b) => { for (let i = lastBarAt; i < total; i++) b[i] *= i < lastBarAt + 200 ? 1 - (i - lastBarAt) / 200 : 0 }
+    for (const b of [hats, clap, perc, ride, acid]) cut(b)
+    stamp(toss, clapHit, stepAt(lastBar, false), 1, sr)
+    renderReverseCrash(fx, sr, loop, Math.round(8 * a.stepSeconds * sr), noise)
+  }
 
   // the voice says the name once a loop: deep on a drop's first bar, a whisper in bar 3
   const drop = t.part !== null && t.part !== undefined && PLAN[t.part].section === 'drop'
@@ -902,6 +950,8 @@ export function mixdown(input, { sampleRate = 44100, voices = null, rise = false
   const room = 0.8 + (t.mood <= 1 ? 0.06 : 0)
   const [revL, revR] = reverb(revIn, revIn, sr, room, 0.35)
   const [dlyL, dlyR] = pingPong(dlyIn, sr, a.stepSeconds * 3, 0.5)
+  const [tossL, tossR] = toss ? pingPong(toss, sr, a.stepSeconds * 3, 0.78) : [null, null]
+  if (toss) { const [tl, tr] = reverb(toss, toss, sr, 0.9, 0.3); for (let i = 0; i < total; i++) { tossL[i] = tossL[i] * 1.6 + tl[i] * 0.9 + toss[i] * 0.7; tossR[i] = tossR[i] * 1.6 + tr[i] * 0.9 + toss[i] * 0.7 } }
 
   // rumble: the kick through a long dark reverb, low-passed and heavily ducked
   let rumL = null
@@ -924,6 +974,22 @@ export function mixdown(input, { sampleRate = 44100, voices = null, rise = false
     const h = hats[i] * levels.hats, p = perc[i] * levels.perc, s = stab[i] * levels.stab * d, rd = ride[i] * levels.ride * Math.sqrt(d), pd = pad[i] * levels.pad * d
     left[i] = center + h * 0.8 + p * 1.15 + s + rd * 1.2 + pd + (revL[i] * 0.9 + dlyL[i] * 0.45) * d
     right[i] = center + h * 1.15 + p * 0.8 + s + rd * 0.8 + pd + (revR[i] * 0.9 + dlyR[i] * 0.45) * d
+    if (boom) { left[i] += boom[i] * 0.75; right[i] += boom[i] * 0.75 }
+    if (toss) { left[i] += tossL[i] * 0.6; right[i] += tossR[i] * 0.6 }
+  }
+  // the filter build: everything but the riser closes into a resonant
+  // low-pass over the loop, most of it in the last four bars, then the
+  // last beat (and the tail) is silence
+  if (rise && build === 'filter') {
+    const fl = svf(), fr = svf()
+    const gap = loop - 4 * Math.round(a.stepSeconds * sr)
+    for (let i = 0; i < total; i++) {
+      if (i >= gap) { left[i] = 0; right[i] = 0; continue }
+      if ((i & 15) === 0) { const u = Math.pow(i / gap, 1.8); const fc = 12000 * Math.pow(220 / 12000, u); fl.set(fc, sr, 1.6); fr.set(fc, sr, 1.6) }
+      const f = fx[i] * levels.fx
+      left[i] = fl.run(left[i] - f, 0) + f
+      right[i] = fr.run(right[i] - f, 0) + f
+    }
   }
   return { left, right, loop, total, sampleRate: sr, seconds: loopSeconds, stepSeconds: a.stepSeconds }
 }

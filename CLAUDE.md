@@ -41,7 +41,11 @@ Needs Claude Code v2.1.287 or later (built and checked on v2.1.288).
   clap roll lead into each drop (`rise`, auto only); a crash opens each drop.
 - **No stabs** ("they make the track less serious"). The dub chord is out of
   the plan and out of the old full-track default. A ride (drops 2 and 3) and a
-  dark pad (breakdowns, one swell per loop) take its place. `stab` still
+  dark pad (breakdowns, one swell per loop) take its place. Chords (the pad,
+  and a stab Claude brings in) are never bright: a minor triad plus octave
+  where the scale has a minor third, root-fifth-octave on hijaz (mysterious).
+  The old picked-scale chord was 1-3-5-7 of the scale, a dominant seventh on
+  hijaz ("on mysterious they destroy the vibe, something is off", 2026-10-04). `stab` still
   exists for old codes and Claude.
 - **Handover A** (picked from three drawn options). After the outro the old
   track takes one layer out per step while the new one brings one in, then
@@ -61,9 +65,10 @@ Needs Claude Code v2.1.287 or later (built and checked on v2.1.288).
   queued bars and lands on the next bar.
 - **The deck, layout A** (must-haves from Ruslan: play/stop, the track and its
   mood, auto, next when auto is off, mood, the grid stays "it makes the app
-  alive", edit as a separate button, favorites, previous track). Top: play,
-  name · mood, ⏮ previous, ♡, auto, hide. Then the part and what is next (a
-  countdown with auto). Grid. Under it: mood sad/mysterious/dark, next part ›
+  alive", edit as a separate button, favorites, previous track). Top: ⏮, play,
+  name · mood, ♡, auto, hide. Then the part and what is next (a
+  countdown with auto). Grid. ⏮ sits right before play/stop, in the app and
+  in the bar (Ruslan, 2026-10-04: "previous and stop should be next to each other"). Under it: mood sad/mysterious/dark, next part ›
   (auto off only), edit, ♥ favorites n. Edit opens: new rhythm, melody (the
   acid riff), tempo −/+, undo, share mp3. "auto", not "build by itself".
   Mockups A, B, C were drawn; A is built until Ruslan picks.

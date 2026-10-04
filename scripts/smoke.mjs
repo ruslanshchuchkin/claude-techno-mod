@@ -2,7 +2,7 @@
 // every part of the plan renders, the handover renders, and a render is fast.
 // `claude plugin test` is the real test of the mod.
 import { readFileSync } from 'node:fs'
-import { trackFor, atPart, renderLoop, PLAN, HANDOVER } from '../hooks/engine.js'
+import { trackFor, atPart, renderLoop, arrange, withVibe, PLAN, HANDOVER, VIBES } from '../hooks/engine.js'
 import { newSet, loopSpec, afterLoop } from '../hooks/conductor.js'
 
 const fail = (msg) => { console.error('FAIL', msg); process.exitCode = 1 }
@@ -28,5 +28,13 @@ for (let i = 0; i < HANDOVER.length; i++) {
   if (!r.left.some((x) => x !== 0)) fail('handover step ' + i + ' is silent')
   afterLoop(set, { auto: true, nextTrack: () => trackFor('next one') })
   afterLoop(set, { auto: true, nextTrack: () => trackFor('next one') })
+}
+// chords stay dark in every mood: no major third, no seventh over the root
+for (const v of VIBES) {
+  const a = arrange({ ...withVibe(trackFor('chord check'), v.name), layers: { stab: true, pad: true } })
+  for (const notes of [a.events.stab[0].notes, a.events.pad[0].notes]) {
+    const bad = notes.map((n) => (n - notes[0]) % 12).filter((i) => i === 4 || i === 10 || i === 11)
+    if (bad.length) fail(`${v.name}: a bright interval in the chord ${notes}`)
+  }
 }
 console.log(process.exitCode ? 'smoke: failed' : `smoke: ok (v${plugin})`)

@@ -3,8 +3,8 @@
 // handlers (`act`), and return a tree. No mods API here; register.js owns
 // the calls to the player.
 //
-// Layout A (Ruslan, 2026-10-03): one line on top (play, the track and its
-// mood, previous, favorite, auto), the grid, one line under it (mood, next
+// Layout A (Ruslan, 2026-10-03): one line on top (previous and play side by
+// side, the track and its mood, favorite, auto), the grid, one line under it (mood, next
 // part, edit, favorites), and the edit line when edit is open. Three screens:
 // the deck, the favorites (with the tracks you heard), and new tracks.
 //
@@ -24,12 +24,12 @@ const clock = (ms) => { const s = Math.ceil(ms / 1000); return Math.floor(s / 60
 function topLine(ui, vm, act) {
   const v = vm.view
   return spread(ui, [
+    vm.recent.length ? ui.Button({ key: 'prev', label: '⏮', onPress: () => act.prev() }) : null,
     toggle(ui, 'play', vm.playing ? '■ stop' : '▶ play', !vm.playing, () => (vm.playing ? act.stop() : act.play()), { hotkey: 'p' }),
     ui.Text({ bold: true, wrap: 'truncate-end', children: [v.phrase] }),
     dim(ui, '· ' + v.mood),
     v.from ? dim(ui, '← mixing in from ' + v.from, { wrap: 'truncate-end' }) : null,
   ], [
-    vm.recent.length ? ui.Button({ key: 'prev', label: '⏮ previous', onPress: () => act.prev() }) : null,
     ui.Button({ key: 'fav', label: vm.fav ? '♥' : '♡', onPress: () => act.fav() }),
     toggle(ui, 'auto', vm.auto ? '● auto' : '○ auto', vm.auto, () => act.auto(), { hotkey: 'a' }),
     ui.Button({ key: 'close', label: 'hide', role: 'dismiss', plain: true, dimColor: true, onPress: () => act.close() }),
@@ -143,10 +143,10 @@ export function miniView(ui, vm, act) {
   if (!vm.view) return row(ui, [ui.Text({ bold: true, children: ['♪'] }), dim(ui, vm.down || 'starting the player…'), link(ui, 'mini-close', '×', () => act.closeBar())], { columnGap: 2 })
   return row(ui, [
     ui.Text({ bold: true, children: ['♪'] }),
+    vm.recent.length ? ui.Button({ key: 'mini-prev', label: '⏮', onPress: () => act.prev() }) : null,
     toggle(ui, 'mini-play', vm.playing ? '■ stop' : '▶ play', !vm.playing, () => (vm.playing ? act.stop() : act.play())),
     ui.Text({ bold: true, wrap: 'truncate-end', children: [vm.view.phrase] }),
     dim(ui, vm.view.mood + ' · ' + (vm.view.section === 'handover' ? 'handover' : vm.view.name)),
-    vm.recent.length ? ui.Button({ key: 'mini-prev', label: '⏮', onPress: () => act.prev() }) : null,
     ui.Button({ key: 'mini-fav', label: vm.fav ? '♥' : '♡', onPress: () => act.fav() }),
     toggle(ui, 'mini-auto', vm.auto ? '● auto' : '○ auto', vm.auto, () => act.auto()),
     ui.Button({ key: 'mini-next', label: '⏭ next track', onPress: () => act.skip() }),

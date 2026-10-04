@@ -291,7 +291,12 @@ export function arrange(input) {
   // the sub's root, e1..d#2: low enough to feel, the growl sits an octave up
   const root = 28 + (((keyClass + t.transpose) % 12) + 8) % 12
   // without a picked scale the mood keeps its old chord; a picked scale stacks its own
-  const chordShape = t.scale === null ? CHORDS[t.mood] : [0, scale[2], scale[4], scale[6]]
+  // Chords stay dark: a minor triad and the octave where the scale has a minor
+  // third, and root, fifth, octave where it has none (hijaz, the mysterious
+  // mood). A major third or a seventh sounded bright and bluesy there
+  // (Ruslan, 2026-10-04: "they destroy the vibe, something is off").
+  const minorThird = scale[2] === 3
+  const chordShape = t.scale === null ? CHORDS[t.mood] : minorThird ? [0, 3, 7, 12] : [0, 7, 12]
   const degree = (d) => scale[((d % 7) + 7) % 7] + 12 * Math.floor(d / 7)
 
   const bassPattern = t.energy === 0 ? BASS_PATTERNS[0] : pick(r, BASS_PATTERNS)
@@ -347,8 +352,8 @@ export function arrange(input) {
       if (s % 2 === 0) ev.ride.push({ step, vel: s % 4 === 2 ? 1 : 0.55 })
     }
   }
-  // the pad: one long swell over the loop, the root, the fifth and the third above
-  ev.pad.push({ step: 0, notes: [root + 12, root + 12 + scale[4], root + 24 + scale[2]] })
+  // the pad: one long swell over the loop, the root, the fifth, and the minor third above (or the octave)
+  ev.pad.push({ step: 0, notes: minorThird ? [root + 12, root + 19, root + 27] : [root + 12, root + 19, root + 24] })
   // your step edits: the same on/off mask in every bar of the loop
   const chord = chordShape.map((i) => root + 24 + i)
   const fresh = { kick: () => ({ vel: 1 }), hats: () => ({ vel: 0.8, open: false }), bass: () => ({ note: root, vel: 0.9 }), perc: () => ({ vel: 0.85, kind: percKind }), clap: () => ({ vel: 1 }), acid: () => ({ note: root + 24, accent: false, slide: false }), stab: () => ({ notes: chord, vel: 1 }), ride: () => ({ vel: 0.8 }) }

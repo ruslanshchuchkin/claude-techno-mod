@@ -35,7 +35,19 @@ Needs Claude Code v2.1.287 or later (built and checked on v2.1.288).
 
 ### 0.9 (Ruslan, 2026-10-04), these win over older notes below
 
-- **The song as words, option C** (0.9.1, Ruslan: "named sections, every
+- **The part bar, option A** (0.9.2, Ruslan: "make it A · inline bar ... too
+  many words and i don't like to see bar 1/8"). It replaces the section
+  words: one block per loop (about 15 s, so the bar agrees with the clock),
+  played ▰, the part that plays in the accent (▰ played of it, ▱ left of
+  it), the rest ▱ dim; then the part's name and `2:52 / 6:47`. `partBar()`
+  in views.js. The grid has no "bar n/8" line any more (grid.client.js,
+  `TOP` = 1).
+- **Clarity review** (2026-10-04): an Opus agent, playing a first-time user,
+  read screenshots of the deck, the edit card and the bar. Its worst points:
+  "auto" with a dot, the techno words (drop, breakdown, build, groove), the
+  grid that reads as stripes, one word for two things, "main" as a song name.
+  Fixes wait for Ruslan's picks.
+- (replaced by the part bar) **The song as words, option C** (0.9.1, Ruslan: "named sections, every
   part has its word, the current one underlined"). It replaces the skyline
   under the top line: `intro groove build drop 1 break drop 2 break drop 3
   outro`, from the track's plan (`sections()` in views.js; parts of one

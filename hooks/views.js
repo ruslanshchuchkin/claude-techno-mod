@@ -3,9 +3,9 @@
 // handlers (`act`), and return a tree. No mods API here; register.js owns
 // the calls to the player.
 //
-// Layout A with the song as words (Ruslan, 2026-10-04): one line on top (previous,
+// Layout A with the part bar (Ruslan, 2026-10-04): one line on top (previous,
 // play and next track side by side, the track, favorite, mood and tempo; auto
-// and hide on the right), the sections of the song, the grid, one line under it
+// and hide on the right), the part bar, the grid, one line under it
 // (mood, next part, edit, favorites), and the edit line when edit is open.
 // Three screens: the deck, the favorites (with the tracks you heard), and new
 // tracks.
@@ -44,44 +44,42 @@ function topLine(ui, vm, act) {
   ], 'top')
 }
 
-// Where the song is, option C (Ruslan, 2026-10-04: "named sections, every
-// part has its word, the current one underlined"): one word per section of
-// the track's plan (the parts of a section side by side are one word; a drop
-// keeps its number). What played is in the text color, the section that
-// plays now is underlined in the accent, what comes is dim. Then, with auto,
-// when the next section starts, and the time in the song.
-const SECTION_WORDS = { intro: 'intro', groove: 'groove', build: 'build', break: 'break', outro: 'outro' }
-export function sections(parts, pos) {
-  const out = []
+// Where the song is, option A (Ruslan, 2026-10-04: "inline bar, one line,
+// the part name after the bar"; the section words were "too many words"):
+// one block per loop (about 15 s), so a block is the same time everywhere and
+// the bar agrees with the clock. The part that plays is in the accent, ▰ for
+// what of it played and ▱ for what is left of it (how long until the next
+// part); played parts ▰, the rest ▱ dim. Then the part's name and the time.
+export function partBar(parts, pos) {
   let from = 0
-  for (const p of parts) {
-    const word = p.section === 'drop' ? p.name : SECTION_WORDS[p.section] ?? p.name
-    const last = out[out.length - 1]
-    if (last && last.word === word) last.to += p.loops
-    else out.push({ word, from, to: from + p.loops })
+  return parts.flatMap((p) => {
+    const cells = Array.from({ length: p.loops }, (_, i) => {
+      const part = pos >= from + p.loops ? 'played' : pos >= from ? 'now' : 'next'
+      return part === 'now' ? (pos >= from + i + 1 ? 'now-played' : 'now-left') : part
+    })
     from += p.loops
-  }
-  for (const x of out) x.state = pos >= x.to ? 'played' : pos >= x.from ? 'now' : 'next'
-  return out
+    return cells
+  })
 }
 
 function whereLine(ui, vm) {
   const v = vm.view, w = vm.where
   if (!w) return null
-  const list = sections(w.parts, w.pos)
-  const now = list.find((x) => x.state === 'now')
-  const next = now ? list[list.indexOf(now) + 1] : null
-  const words = list.map((x, i) => x.state === 'now'
-    ? ui.Text({ key: 'sec-' + i, color: 'claude', bold: true, underline: true, children: [x.word] })
-    : x.state === 'played' ? ui.Text({ key: 'sec-' + i, children: [x.word] }) : dim(ui, x.word, { key: 'sec-' + i }))
-  return spread(ui, [
-    ...words,
-    v.section === 'handover' ? ui.Text({ color: 'claude', bold: true, underline: true, children: ['mixing in'] }) : null,
+  const cells = partBar(w.parts, w.pos)
+  const runs = []
+  for (const c of cells) { const last = runs[runs.length - 1]; if (last && last.c === c) last.n++; else runs.push({ c, n: 1 }) }
+  const look = {
+    played: (n) => ui.Text({ children: ['▰'.repeat(n)] }),
+    'now-played': (n) => ui.Text({ color: 'claude', bold: true, children: ['▰'.repeat(n)] }),
+    'now-left': (n) => ui.Text({ color: 'claude', children: ['▱'.repeat(n)] }),
+    next: (n) => dim(ui, '▱'.repeat(n)),
+  }
+  return row(ui, [
+    ui.Box({ key: 'bar', flexDirection: 'row', flexShrink: 0, children: runs.map((r, i) => ({ ...look[r.c](r.n), key: 'run-' + i })) }),
+    ui.Text({ color: 'claude', bold: true, children: [v.section === 'handover' ? 'mixing in' : v.name] }),
     v.from ? dim(ui, '← from ' + v.from, { wrap: 'truncate-end' }) : null,
-  ], [
-    next && vm.auto ? dim(ui, next.word + ' in ' + clock((now.to - w.pos) * w.loopMs) + ' ·') : null,
-    dim(ui, clock(w.elapsed) + ' / ' + clock(w.total)),
-  ], 'where')
+    dim(ui, '· ' + clock(w.elapsed) + ' / ' + clock(w.total)),
+  ], { key: 'where', columnGap: 1 })
 }
 
 function bottomLine(ui, vm, act) {

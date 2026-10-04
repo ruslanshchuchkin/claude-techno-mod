@@ -10,7 +10,7 @@
 // A layer the build has not brought in (or took out) is dim; one you muted is struck through.
 // The next sound of the build is a dashed row: where it will play, not yet clickable.
 const LABEL = 8
-const TOP = 2 // the header line and the beat ruler
+const TOP = 1 // the beat ruler (no "bar n/8" line: Ruslan, 2026-10-04)
 const cellX = (i) => LABEL + i * 3 + Math.floor(i / 4)
 
 // Theme keys, not raw colors, so the grid reads in the light and the dark
@@ -68,17 +68,9 @@ export default function Grid(props, surface) {
   if (changed) surface.setState(st)
 
   const col = props.playing ? st.step % 16 : -1
-  const bar = Math.floor(st.step / 16) + 1
   const hover = st.hover
   const gap = (i) => (i % 4 === 3 ? 2 : 1)
 
-  const header = Box({
-    key: 'gh',
-    flexDirection: 'row',
-    children: [
-      Text({ dimColor: true, children: [props.playing ? `bar ${bar}/8` : 'stopped'] }),
-    ],
-  })
   const ruler = Box({
     key: 'gr',
     flexDirection: 'row',
@@ -116,5 +108,5 @@ export default function Grid(props, surface) {
       children: [Box({ key: 'l-' + name, width: LABEL, children: [label] }), ...cells],
     })
   })
-  return Box({ flexDirection: 'column', children: [header, ruler, ...rows] })
+  return Box({ flexDirection: 'column', children: [ruler, ...rows] })
 }

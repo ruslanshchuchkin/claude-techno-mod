@@ -1,7 +1,7 @@
 import { expect, mock, test } from 'claude-code/testing'
 import { atPart, encodeCode, parseCode, toggleStep, trackFor, moodName, withVibe, activeLayers, transitionsOf, editTrack, planOf, planAdd, grid, soundInfo, INSTRUMENTS, PLAN, HANDOVERS, HANDOVER_LOOPS, BUILDS, FALLS } from '../hooks/engine.js'
 import { newSet, loopSpec, afterLoop, stepOn, posOf } from '../hooks/conductor.js'
-import { sections } from '../hooks/views.js'
+import { partBar } from '../hooks/views.js'
 
 // What Claude Code passes to the band's ui.render hook, apart from the app
 const PANE = {
@@ -166,10 +166,10 @@ test('a click on a grid cell edits a step, and a click on a row name toggles the
   await $.command.run({ command: 'techno', args: 'ruslan' })
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ ...PANE, surface })
-    // row 0 (kick) sits under the header and the beat ruler; step 2 starts at column 8 + 2 * 3
-    await ui.pointer({ type: 'down', x: 14, y: 2, button: 'left', in: 'grid' })
+    // row 0 (kick) sits under the beat ruler; step 2 starts at column 8 + 2 * 3
+    await ui.pointer({ type: 'down', x: 14, y: 1, button: 'left', in: 'grid' })
     expect(player.cmds.at(-1)).toMatchObject({ op: 'step', layer: 'kick', i: 2 })
-    await ui.pointer({ type: 'down', x: 1, y: 2, button: 'left', in: 'grid' })
+    await ui.pointer({ type: 'down', x: 1, y: 1, button: 'left', in: 'grid' })
     expect(player.cmds.at(-1)).toMatchObject({ op: 'layer', name: 'kick' })
     await ui.unmount()
   }
@@ -321,16 +321,16 @@ test('only auto plays the transitions; the drop after a build-up gets its boom, 
   expect(loopSpec(h, { auto: true })).toMatchObject({ impact: true, build: fx.swap })
 })
 
-test('the song as words: one per section, a drop keeps its number, the current one is the one that plays', () => {
+test('the part bar: one block per loop, the part that plays shows what is left of it', () => {
   const parts = PLAN.map((p) => ({ name: p.name, section: p.section, loops: p.loops }))
-  const at = (pos: number) => sections(parts, pos)
-  expect(at(0).map((x: any) => x.word)).toEqual(['intro', 'groove', 'build', 'drop 1', 'break', 'drop 2', 'break', 'drop 3', 'outro'])
-  expect(at(0)[0].state).toBe('now')
-  // 11 loops in: past the intro, groove and build (10 loops), one loop into drop 1
-  const mid = at(11)
-  expect(mid.find((x: any) => x.state === 'now').word).toBe('drop 1')
-  expect(mid.filter((x: any) => x.state === 'played').length).toBe(3)
-  expect(mid.filter((x: any) => x.state === 'next').length).toBe(5)
+  const total = parts.reduce((n, p) => n + p.loops, 0)
+  expect(partBar(parts, 0).length).toBe(total)
+  // 11.4 loops in: the five parts before drop 1 (10 loops) played; drop 1 (4 loops) has 1 played and 3 left
+  const mid = partBar(parts, 11.4)
+  expect(mid.filter((x: string) => x === 'played').length).toBe(10)
+  expect(mid.filter((x: string) => x === 'now-played').length).toBe(1)
+  expect(mid.filter((x: string) => x === 'now-left').length).toBe(3)
+  expect(partBar(parts, total).every((x: string) => x === 'played')).toBe(true)
 })
 
 test('edit opens the card: instruments, patterns, notes and tone for a sound, the master, and the song parts', async ($, on) => {

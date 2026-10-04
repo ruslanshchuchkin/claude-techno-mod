@@ -165,9 +165,10 @@ function renderFor(spec) {
 // handover, with the layers it has so far), the part, and what comes next.
 function viewOf(set, bar, spec) {
   const h = set.handover
-  const shown = h ? spec.with : set.track
+  const shown = h ? (spec.with ?? E.onlyLayers(set.track, [])) : set.track
   const p = h ? null : E.PLAN[set.track.part]
-  const nextPart = h ? null : E.PLAN[set.track.part + 1]
+  const plan = E.planOf(set.track), at = h ? null : C.posOf(set)
+  const nextPart = h ? null : E.PLAN[plan[at + 1]]
   return {
     code: E.encodeCode(shown),
     id: idOf(set.track),
@@ -178,9 +179,11 @@ function viewOf(set, bar, spec) {
     section: h ? 'handover' : p.section,
     name: h ? 'mixing in' : p.name,
     from: h ? h.from.phrase : null,
-    next: h ? { name: h.step < E.HANDOVER.length - 1 ? 'more of ' + set.track.phrase : set.track.phrase + ' takes over' } : nextPart ? { name: nextPart.name, adds: nextPart.adds, layer: nextPart.layer } : { name: 'the next track' },
+    next: h ? { name: h.step < E.HANDOVERS[h.shape ?? 'hats'].steps.length - 1 ? 'more of ' + set.track.phrase : set.track.phrase + ' takes over' } : nextPart ? { name: nextPart.name, adds: nextPart.adds, layer: nextPart.layer } : { name: 'the next track' },
     bar,
     loopsLeft: C.loopsLeft(set),
+    at,
+    plan,
   }
 }
 
@@ -352,6 +355,45 @@ function changeTrack(fn) {
   edit((set) => { set.track = E.cleanTrack(fn({ ...target(set), layers: { ...target(set).layers }, steps: { ...target(set).steps } })) })
 }
 
+// The song tab: remove a part, add a suggested one, or go back to the plan
+// as written. The set keeps its place in the plan.
+function planEdit(set, c) {
+  let plan = E.planOf(set.track), at = C.posOf(set)
+  if (c.kind === 'plan-remove') {
+    const k = Number(c.k)
+    if (!(k >= 0 && k < plan.length) || plan.length <= 2 || (k === at && !set.handover)) return
+    plan = plan.filter((_, i) => i !== k)
+    if (k < at) at--
+  } else if (c.kind === 'plan-add') {
+    const r = E.planAdd(set.track, c.id)
+    if (!r.count) return
+    plan = r.plan
+    if (r.at <= at) at += r.count
+  } else if (c.kind === 'plan-reset') {
+    plan = E.planOf({})
+    at = Math.max(0, plan.indexOf(set.track.part))
+  }
+  set.track = E.cleanTrack({ ...set.track, plan })
+  if (!set.handover) set.at = at
+}
+
+// What the pane says after an edit from the card.
+function editSaid(c) {
+  const n = c.layer === 'acid' ? 'melody' : c.layer
+  switch (c.kind) {
+    case 'inst': return n + ': ' + (E.INSTRUMENTS[c.layer]?.[c.value] ?? '')
+    case 'pattern': return n + ': ' + c.name
+    case 'note': return n + ': note moved'
+    case 'suggest-notes': return n + ': new notes'
+    case 'tone': return n + ': tone'
+    case 'master': return 'master'
+    case 'plan-remove': return 'part removed'
+    case 'plan-add': return 'part added'
+    case 'plan-reset': return 'the song as written'
+    default: return n + ' as written'
+  }
+}
+
 function command(c) {
   switch (c.op) {
     case 'play': play(); break
@@ -388,6 +430,11 @@ function command(c) {
       return t
     }); st.said = c.name + ' toggled'; break
     case 'step': changeTrack((t) => E.toggleStep(t, c.layer, c.i)); st.said = c.layer + ' step edited'; break
+    case 'edit':
+      if (String(c.kind).startsWith('plan')) edit((set) => planEdit(set, c))
+      else changeTrack((t) => E.editTrack(t, { ...c, seed: c.seed ?? Date.now() % 100000 }))
+      st.said = editSaid(c)
+      break
     case 'dice': changeTrack((t) => ({ ...t, dice: (t.dice + 1) % 1000 })); st.said = 'new rhythm'; break
     case 'undo': {
       const back = undos.pop()

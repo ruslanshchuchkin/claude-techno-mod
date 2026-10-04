@@ -5,33 +5,40 @@
 //
 // A set is the current track at a part of PLAN, plus how many loops it has
 // played there. With auto on, each part plays its `loops`, then the next one;
-// after the outro the next track comes in through the HANDOVER steps and goes
+// after the outro the next track comes in through a HANDOVERS shape and goes
 // on from its build. With auto, the transitions come from `transitionsOf`
 // (seeded by the track): a build-up on the last loop of a part with `rise`,
 // a fall on the last loop of a drop, a swell into a new sound, a build-up
 // before the low end swaps in the handover. The first loop of a drop (and of
 // the new track after a swap) gets a crash, with auto a boom too.
-import { PLAN, HANDOVER, HANDOVER_LOOPS, HANDOVER_TO, atPart, onlyLayers, cleanTrack, encodeCode, transitionsOf } from './engine.js'
+import { PLAN, HANDOVERS, HANDOVER_LOOPS, atPart, onlyLayers, cleanTrack, encodeCode, transitionsOf, planOf } from './engine.js'
 
-// A fresh set on a track (from its first part unless it has one).
+// A fresh set on a track (from its first part unless it has one). `at` is
+// the position in the track's plan (a part can come twice in it).
 export function newSet(track) {
   const t = cleanTrack(track)
-  return { track: t.part === null ? atPart(t, 0) : t, loop: 0, handover: null }
+  const plan = planOf(t)
+  const k = t.part === null ? 0 : Math.max(0, plan.indexOf(t.part))
+  return { track: atPart(t, plan[k]), loop: 0, handover: null, at: k }
 }
+
+// The position in the plan, for a set saved before 0.9 (no `at`).
+export const posOf = (set) => set.at ?? Math.max(0, planOf(set.track).indexOf(set.track.part))
 
 // What the next loop plays: the arguments of renderLoop. Only auto adds the
 // transitions, since only auto knows what comes next.
 export function loopSpec(set, { auto }) {
   const none = { rise: false, impact: false, build: null, fall: null, swell: false }
   if (set.handover) {
-    const h = HANDOVER[set.handover.step]
-    const swap = auto && set.handover.step === HANDOVER.length - 1 && set.handover.loop >= HANDOVER_LOOPS - 1
-    return { ...none, track: onlyLayers(set.handover.from, h.from), with: onlyLayers(atPart(set.track, HANDOVER_TO), h.to), ...(swap ? { rise: true, build: transitionsOf(set.handover.from).swap } : {}) }
+    const shape = HANDOVERS[set.handover.shape]
+    const h = shape.steps[set.handover.step]
+    const swap = auto && set.handover.step === shape.steps.length - 1 && set.handover.loop >= HANDOVER_LOOPS - 1
+    return { ...none, track: onlyLayers(set.handover.from, h.from), with: h.to.length ? onlyLayers(atPart(set.track, shape.to), h.to) : null, ...(swap ? { rise: true, build: transitionsOf(set.handover.from).swap } : {}) }
   }
-  const i = set.track.part, p = PLAN[i]
+  const k = posOf(set), p = PLAN[set.track.part]
   const last = set.loop >= p.loops - 1
   const fx = auto ? transitionsOf(set.track) : null
-  const rise = !!fx && !!p.rise && last
+  const rise = !!fx && last && fx.build[k] !== undefined
   const drop = p.section === 'drop' && set.loop === 0
   const landed = !!set.swapped && set.loop === 0
   return {
@@ -39,9 +46,9 @@ export function loopSpec(set, { auto }) {
     with: null,
     rise,
     impact: drop || landed,
-    build: rise ? fx.build[i] : fx && drop ? fx.build[i - 1] ?? null : fx && landed ? set.swapped : null,
-    fall: fx && last ? fx.fall[i] ?? null : null,
-    swell: !!(fx && last && fx.swell[i]),
+    build: rise ? fx.build[k] : fx && drop ? fx.build[k - 1] ?? null : fx && landed ? set.swapped : null,
+    fall: fx && last ? fx.fall[k] ?? null : null,
+    swell: !!(fx && last && fx.swell[k]),
   }
 }
 
@@ -56,21 +63,27 @@ export function stepOn(set, nextTrack) {
   if (set.handover) {
     set.handover.step++
     set.handover.loop = 0
-    if (set.handover.step >= HANDOVER.length) {
-      // the new track lands with the crash and the boom of the swap build-up
+    const shape = HANDOVERS[set.handover.shape]
+    if (set.handover.step >= shape.steps.length) {
+      // the new song lands with the crash and the boom of the swap build-up
       set.swapped = transitionsOf(set.handover.from).swap
       set.handover = null
-      set.track = atPart(set.track, HANDOVER_TO)
+      const plan = planOf(set.track)
+      set.at = Math.max(0, plan.indexOf(shape.to))
+      set.track = atPart(set.track, plan[set.at])
     }
     return set
   }
-  if (set.track.part < PLAN.length - 1) {
-    set.track = atPart(set.track, set.track.part + 1)
+  const plan = planOf(set.track), k = posOf(set)
+  if (k < plan.length - 1) {
+    set.at = k + 1
+    set.track = atPart(set.track, plan[k + 1])
     return set
   }
   const next = cleanTrack(nextTrack())
-  set.handover = { from: set.track, step: 0, loop: 0 }
-  set.track = { ...atPart(next, HANDOVER_TO), bpm: set.track.bpm }
+  const shape = transitionsOf(set.track).land
+  set.handover = { from: set.track, step: 0, loop: 0, shape }
+  set.track = { ...atPart(next, HANDOVERS[shape].to), bpm: set.track.bpm }
   return set
 }
 

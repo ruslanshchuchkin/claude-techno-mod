@@ -8,13 +8,13 @@
 // /techno              show or hide the app
 // /techno <phrase>     a new track from the phrase (or from a share code)
 // /techno stop | save | code
-import { parseCode, encodeCode, describe, render, toWav, grid, activeLayers, cleanTrack, LAYERS, GRID_LAYERS, PLAN, VIBES, BPM_MIN, BPM_MAX } from './engine.js'
+import { parseCode, encodeCode, describe, render, toWav, grid, activeLayers, cleanTrack, soundInfo, planOf, planAdds, LAYERS, GRID_LAYERS, PLAN, VIBES, BPM_MIN, BPM_MAX } from './engine.js'
 import { appView, miniView } from './views.js'
 
 const TOOL = 'mcp__techno__jam'
 // The plugin version: in the jam tool's answer, and the player of an older
 // version is replaced by this one. Keep it equal to plugin.json (a test checks).
-const VERSION = '0.8.5'
+const VERSION = '0.9.0'
 // [accent, normal] fill of a hit in the step grid
 const LAYER_COLORS = {
   kick: ['#e85a5a', '#c94040'],
@@ -38,6 +38,7 @@ const s = {
   isOpen: false,
   screen: 'deck', // deck | favorites | crate
   editOpen: false,
+  editTab: null,
   used: false,
   barClosed: false,
   repo: [],
@@ -207,7 +208,7 @@ function describeNow() {
   const v = s.ps?.view
   if (!v) return 'nothing'
   const t = parseCode(v.code)
-  return `"${v.phrase}", ${t ? describe(t) : v.mood}, ${v.section === 'handover' ? 'mixing in from ' + v.from : v.name + ` (part ${v.part + 1} of ${PLAN.length})`}`
+  return `"${v.phrase}", ${t ? describe(t) : v.mood}, ${v.section === 'handover' ? 'mixing in from ' + v.from : v.name + ` (part ${(v.at ?? v.part) + 1} of ${(v.plan ?? PLAN).length})`}`
 }
 
 // ---------- hooks ----------
@@ -328,12 +329,17 @@ export function register(on) {
     let where = null
     if (v) {
       const barMs = ps.barMs || 1800
-      const totalLoops = PLAN.reduce((n, p) => n + p.loops, 0)
-      const before = v.part === null ? totalLoops : PLAN.slice(0, v.part).reduce((n, p) => n + p.loops, 0)
-      const inPart = v.part === null ? 0 : Math.max(0, PLAN[v.part].loops - v.loopsLeft)
+      const plan = v.plan ?? PLAN.map((_, k) => k)
+      const loops = plan.map((k) => PLAN[k].loops)
+      const totalLoops = loops.reduce((n, x) => n + x, 0)
+      const at = v.part === null ? plan.length : v.at ?? Math.max(0, plan.indexOf(v.part))
+      const before = loops.slice(0, at).reduce((n, x) => n + x, 0)
+      const inPart = v.part === null ? 0 : Math.max(0, loops[at] - v.loopsLeft)
       const pos = Math.min(totalLoops, before + inPart + (v.part === null ? 0 : (v.bar + Math.min(1, sinceBar / barMs)) / 8))
-      where = { loops: PLAN.flatMap((p) => Array(p.loops).fill(p.energy)), pos, elapsed: pos * 8 * barMs, total: totalLoops * 8 * barMs }
+      where = { loops: plan.flatMap((k) => Array(PLAN[k].loops).fill(PLAN[k].energy)), pos, elapsed: pos * 8 * barMs, total: totalLoops * 8 * barMs }
     }
+    // the edit card opens on the bass (or the first sound that plays)
+    const editTab = s.editTab ?? (heard.bass ? 'bass' : ['kick', 'hats', 'acid'].find((n) => heard[n]) ?? 'kick')
     const vm = {
       surface: e.surface,
       columns: e.viewport?.columns ?? 100,
@@ -347,7 +353,13 @@ export function register(on) {
       nextIn,
       where,
       editOpen: s.editOpen,
-      acidOn: !!heard.acid,
+      editTab,
+      heard,
+      info: t && editTab && !['song', 'master', 'add'].includes(editTab) ? soundInfo(t, editTab) : null,
+      master: t?.master ?? [0, 0, 0],
+      plan: t ? planOf(t).map((k, i) => ({ k: i, name: PLAN[k].name, now: v.part !== null && i === (v.at ?? -1) })) : [],
+      planAdds: t ? planAdds(t) : [],
+      planEdited: !!t?.plan,
       favorites: ps?.favorites ?? [],
       recent: ps?.recent ?? [],
       playlist: ps?.playlist ?? null,
@@ -370,7 +382,6 @@ export function register(on) {
       toggleFav: (code) => cmd($, { op: 'fav', code }),
       mood: (name) => cmd($, { op: 'jam', mood: name }),
       dice: go({ op: 'dice' }),
-      melody: go({ op: 'layer', name: 'acid' }),
       undo: go({ op: 'undo' }),
       bpm: (d) => cmd($, { op: 'jam', bpm: Math.max(BPM_MIN, Math.min(BPM_MAX, (v?.bpm ?? 128) + d)) }),
       pick: (code) => { s.screen = 'deck'; return cmd($, { op: 'pick', code, playlist: null }) },
@@ -381,6 +392,9 @@ export function register(on) {
       copy: (code) => copyLine($, code ?? v.code),
       screen: (id) => { s.screen = id; $.ui.invalidate('ui.render') },
       edit: () => { s.editOpen = !s.editOpen; $.ui.invalidate('ui.render') },
+      editTab: (id) => { s.editTab = id; $.ui.invalidate('ui.render') },
+      tweak: (e) => cmd($, { op: 'edit', ...e }),
+      layer: (name) => cmd($, { op: 'layer', name }),
       open: () => { s.isOpen = true; s.screen = 'deck'; $.ui.invalidate('ui.render') },
       close: () => { s.isOpen = false; $.ui.invalidate('ui.render') },
       closeBar: () => { s.barClosed = true; $.store.set('bar', false); $.ui.invalidate('ui.render') },

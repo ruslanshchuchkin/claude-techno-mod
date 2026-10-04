@@ -1,6 +1,6 @@
 import { expect, mock, test } from 'claude-code/testing'
-import { atPart, encodeCode, parseCode, toggleStep, trackFor, moodName, withVibe, activeLayers, transitionsOf, PLAN, HANDOVER, HANDOVER_LOOPS, HANDOVER_TO, BUILDS, FALLS } from '../hooks/engine.js'
-import { newSet, loopSpec, afterLoop, stepOn } from '../hooks/conductor.js'
+import { atPart, encodeCode, parseCode, toggleStep, trackFor, moodName, withVibe, activeLayers, transitionsOf, editTrack, planOf, planAdd, grid, soundInfo, INSTRUMENTS, PLAN, HANDOVERS, HANDOVER_LOOPS, BUILDS, FALLS } from '../hooks/engine.js'
+import { newSet, loopSpec, afterLoop, stepOn, posOf } from '../hooks/conductor.js'
 import { skyline } from '../hooks/views.js'
 
 // What Claude Code passes to the band's ui.render hook, apart from the app
@@ -20,7 +20,7 @@ function fakePlayer() {
   const view = () => {
     const t = p.set.track
     const nx = PLAN[t.part + 1]
-    return { code: encodeCode(t), id: id(t), phrase: t.phrase, mood: moodName(t), bpm: t.bpm, part: t.part, section: PLAN[t.part].section, name: PLAN[t.part].name, from: null, next: nx ? { name: nx.name, adds: nx.adds, layer: nx.layer } : { name: 'the next track' }, bar: 0, loopsLeft: 1 }
+    return { code: encodeCode(t), id: id(t), phrase: t.phrase, mood: moodName(t), bpm: t.bpm, part: t.part, section: PLAN[t.part].section, name: PLAN[t.part].name, from: null, next: nx ? { name: nx.name, adds: nx.adds, layer: nx.layer } : { name: 'the next track' }, bar: 0, loopsLeft: 1, at: posOf(p.set), plan: planOf(t) }
   }
   const state = () => ({ version: '9.9.9', rev: p.rev, now: 0, playing: p.playing, auto: p.auto, playlist: null, view: view(), barStartedAt: 0, barMs: 1800, stepMs: 112, nextInMs: p.playing && p.auto ? 23000 : null, fav: p.favorites.some((f: any) => f.code === id(p.set.track)), favorites: p.favorites, recent: p.history.map((c: string) => ({ code: c, label: parseCode(c)!.phrase, mood: 'dark', bpm: 128 })), said: p.said, canUndo: false })
   p.command = (c: any) => {
@@ -37,6 +37,8 @@ function fakePlayer() {
     if (c.op === 'jam' && c.mood) p.set.track = withVibe(t, c.mood)
     if (c.op === 'layer') p.set.track = { ...t, layers: { ...t.layers, [c.name]: !activeLayers(t)[c.name] } }
     if (c.op === 'step') p.set.track = toggleStep(t, c.layer, c.i)
+    if (c.op === 'edit' && !String(c.kind).startsWith('plan')) p.set.track = editTrack(t, c)
+    if (c.op === 'edit' && c.kind === 'plan-remove') p.set.track = { ...t, plan: planOf(t).filter((_: number, i: number) => i !== c.k) }
     if (c.op === 'fav') p.favorites = p.favorites.some((f: any) => f.code === id(t)) ? [] : [{ code: id(t), label: t.phrase, mood: moodName(t), bpm: t.bpm }]
     return state()
   }
@@ -134,8 +136,9 @@ test('the deck: play, the track and its mood, previous, favorite, auto; mood, ne
   await ui.press({ key: 'next' })
   expect(player.set.track.part).toBe(1)
   await ui.press({ key: 'edit' })
-  expect(await ui.find({ key: 'dice' })).toBeDefined()
-  expect(await ui.find({ key: 'melody' })).toBeDefined()
+  // the edit card, not the old row with the acid toggle
+  expect(await ui.find({ key: 'edit-tabs' })).toBeDefined()
+  expect(await ui.find({ key: 'melody' })).toBeUndefined()
   await ui.press({ key: 'fav' })
   expect((await ui.find({ key: 'fav' }))?.props.label).toBe('♥')
   await ui.unmount()
@@ -215,7 +218,7 @@ test('the set: three drops, a riser before each, a crash on each, about seven mi
   expect(loops).toBeGreaterThanOrEqual(25)
 })
 
-test('the handover takes the old track out layer by layer, and the new one goes on from its build', () => {
+test('the handover takes the old track out layer by layer, and the new song starts from its kick or its hats', () => {
   const set = newSet(atPart(trackFor('ship it'), PLAN.length - 1))
   const bpm = set.track.bpm
   afterLoop(set, { auto: true, nextTrack: () => trackFor('warehouse 4am') })
@@ -223,7 +226,9 @@ test('the handover takes the old track out layer by layer, and the new one goes 
   expect(set.track.phrase).toBe('warehouse 4am')
   expect(set.track.bpm).toBe(bpm)
   let before = 99
-  for (let i = 0; i < HANDOVER.length * HANDOVER_LOOPS; i++) {
+  const shape = HANDOVERS[set.handover.shape]
+  expect(transitionsOf(trackFor('ship it')).land).toBe(set.handover.shape)
+  for (let i = 0; i < shape.steps.length * HANDOVER_LOOPS; i++) {
     const spec = loopSpec(set, { auto: true })
     if (set.handover.loop === 0) {
       const old = Object.values(activeLayers(spec.track)).filter(Boolean).length
@@ -233,7 +238,10 @@ test('the handover takes the old track out layer by layer, and the new one goes 
     afterLoop(set, { auto: true, nextTrack: () => trackFor('null pointer') })
   }
   expect(set.handover).toBe(null)
-  expect(set.track.part).toBe(HANDOVER_TO)
+  expect(set.track.part).toBe(shape.to)
+  expect([0, 2]).toContain(set.track.part)
+  // across songs, both landings happen
+  expect(new Set(Array.from({ length: 40 }, (_, n) => transitionsOf(trackFor('song ' + n)).land))).toEqual(new Set(['kick', 'hats']))
 })
 
 test('share codes: a<n> is the part, an old p<n> lands in the same section', () => {
@@ -306,7 +314,7 @@ test('only auto plays the transitions; the drop after a build-up gets its boom, 
   const h = newSet(atPart(t, PLAN.length - 1))
   const next = trackFor('ship it')
   afterLoop(h, { auto: true, nextTrack: () => next })
-  for (let k = 0; k < HANDOVER.length * HANDOVER_LOOPS - 1; k++) afterLoop(h, { auto: true, nextTrack: () => next })
+  for (let k = 0; k < HANDOVERS[h.handover.shape].steps.length * HANDOVER_LOOPS - 1; k++) afterLoop(h, { auto: true, nextTrack: () => next })
   expect(loopSpec(h, { auto: true })).toMatchObject({ rise: true, build: fx.swap })
   afterLoop(h, { auto: true, nextTrack: () => next })
   expect(h.handover).toBe(null)
@@ -322,4 +330,73 @@ test('the skyline fits the band: two cells a loop when there is room, never more
     // the three drops stay apart once the band has 20 cells
     if (room >= 20) expect(cells.join('').match(/█+/g)?.length).toBe(3)
   }
+})
+
+test('edit opens the card: instruments, patterns, notes and tone for a sound, the master, and the song parts', async ($, on) => {
+  const { player } = stubs(on)
+  await start($)
+  await $.command.run({ command: 'techno', args: '' })
+  player.set = newSet(atPart(trackFor('late night deploy'), 5))
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await ui.press({ key: 'edit' })
+  // it opens on the bass: its instruments, a pattern to try, its notes, its tone
+  expect((await ui.find({ key: 'tab-bass' }))?.props.variant).toBe('primary')
+  await ui.press({ key: 'inst-bass-growl' })
+  expect(player.cmds.at(-1)).toMatchObject({ op: 'edit', kind: 'inst', layer: 'bass', value: 2 })
+  expect(player.set.track.inst.bass).toBe(2)
+  await ui.press({ key: 'pat-bass-gallop' })
+  expect(grid(player.set.track).bass).toBe('.xxx.xxx.xxx.xxx')
+  expect((await ui.find({ key: 'pat-bass-gallop' }))?.props.variant).toBe('primary')
+  await ui.press({ key: 'note-bass-1' })
+  expect(player.set.track.notes.bass[1]).not.toBe('.')
+  await ui.press({ key: 'cut-bass-down' })
+  expect(player.set.track.tone.bass).toEqual([-1, 0])
+  // the master
+  await ui.press({ key: 'tab-master' })
+  await ui.press({ key: 'lp-down' })
+  expect(player.set.track.master[0]).toBe(-1)
+  // the song: a part that does not play can go
+  await ui.press({ key: 'tab-song' })
+  expect(await ui.find({ key: 'part-x-5' })).toBeUndefined()
+  await ui.press({ key: 'part-x-3' })
+  expect(planOf(player.set.track)).not.toContain(3)
+  // every edit rides in the share code
+  const code = encodeCode(player.set.track)
+  expect(encodeCode(parseCode(code)!)).toBe(code)
+  await ui.unmount()
+})
+
+test('the edit actions: a pattern pick, a note up the scale, suggested notes, the share code, old codes unchanged', () => {
+  let t = atPart(trackFor('ship it'), 5)
+  t = editTrack(t, { kind: 'pattern', layer: 'hats', name: '16ths' })
+  expect(grid(t).hats.replace(/X/g, 'x')).toBe('xxxxxxxxxxxxxxxx')
+  t = editTrack(t, { kind: 'reset-pattern', layer: 'hats' })
+  expect(t.steps.hats).toBeUndefined()
+  const before = soundInfo(t, 'bass').notes
+  const i = before.findIndex((n: string | null) => n)
+  t = editTrack(t, { kind: 'note', layer: 'bass', i })
+  expect(soundInfo(t, 'bass').notes[i]).not.toBe(before[i])
+  t = editTrack(t, { kind: 'suggest-notes', layer: 'acid', seed: 7 })
+  for (const n of soundInfo(t, 'acid').notes.filter(Boolean)) expect(soundInfo(t, 'acid').scale).toContain(n)
+  for (const [layer, list] of Object.entries(INSTRUMENTS)) t = editTrack(t, { kind: 'inst', layer, value: list.length - 1 })
+  t = editTrack(t, { kind: 'tone', layer: 'kick', cut: 2, grit: 3 })
+  t = editTrack(t, { kind: 'master', hp: 1, space: -1 })
+  const code = encodeCode(t)
+  expect(encodeCode(parseCode(code)!)).toBe(code)
+  // a code from before the card still means the same track
+  expect(encodeCode(parseCode('late-night-deploy@131m1e2d3a4+acid-hats*kick00040000')!)).toBe('late-night-deploy@131m1e2d3a4-hats+acid*kick00040000')
+})
+
+test('a song with its own plan: auto walks it, builds go before every drop, the set keeps its place', () => {
+  let t = trackFor('late night deploy')
+  t = { ...t, plan: planAdd(t, 'drop').plan }
+  const plan = planOf(t)
+  expect(plan.filter((i: number) => PLAN[i].section === 'drop').length).toBe(4)
+  const fx = transitionsOf(t)
+  const drops = plan.map((i: number, k: number) => (PLAN[i].section === 'drop' ? k : -1)).filter((k: number) => k >= 0)
+  for (const k of drops) expect(fx.build[k - 1]).toBeDefined()
+  const set = newSet(t)
+  let walked = 0
+  while (!set.handover && walked < 60) { afterLoop(set, { auto: true, nextTrack: () => trackFor('x') }); walked++ }
+  expect(walked).toBe(plan.reduce((n: number, i: number) => n + PLAN[i].loops, 0))
 })

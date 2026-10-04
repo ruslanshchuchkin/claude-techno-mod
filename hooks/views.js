@@ -89,19 +89,103 @@ function bottomLine(ui, vm, act) {
   ], 'bottom')
 }
 
-// Edit: change the rhythm, the melody and the tempo; undo; share.
-function editLine(ui, vm, act) {
-  return row(ui, [
-    dim(ui, 'edit'),
-    ui.Button({ key: 'dice', label: '⚄ new rhythm', onPress: () => act.dice(), hotkey: 'd' }),
-    toggle(ui, 'melody', '♪ melody', vm.acidOn, () => act.melody()),
-    ui.Button({ key: 'slower', label: '−', onPress: () => act.bpm(-2) }),
-    dim(ui, vm.view.bpm + ' bpm'),
-    ui.Button({ key: 'faster', label: '+', onPress: () => act.bpm(2) }),
+// The edit card, layout B (Ruslan, 2026-10-04): tabs for the sounds that
+// play, + sound, song and master; one short card for the tab you are on.
+// Every change goes to the player as { op: 'edit', kind, ... } (editTrack).
+const SOUND_TABS = ['kick', 'bass', 'hats', 'rumble', 'clap', 'perc', 'ride', 'pad', 'acid']
+const tabName = (n) => (n === 'acid' ? 'melody' : n)
+const CUT_WORDS = ['muffled', 'dark', 'warm', 'as is', 'clear', 'bright', 'thin']
+const GRIT_WORDS = ['clean', 'warm', 'driven', 'crushed']
+const LP_WORDS = ['closed', 'dark', 'soft', 'open']
+const HP_WORDS = ['full', 'lighter', 'thin', 'tiny']
+const SPACE_WORDS = ['dry', 'tight', 'as is', 'wide', 'huge']
+const label = (ui, text) => ui.Box({ width: 8, flexShrink: 0, children: [dim(ui, text)] })
+const line = (ui, key, name, children) => ui.Box({ key, flexDirection: 'row', alignItems: 'center', columnGap: 1, children: [label(ui, name), row(ui, children)] })
+const stepper = (ui, key, words, i, onMinus, onPlus) => [
+  ui.Button({ key: key + '-down', label: '−', onPress: onMinus }),
+  ui.Box({ width: Math.max(...words.map((w) => w.length)), justifyContent: 'center', children: [ui.Text({ bold: true, children: [words[i]] })] }),
+  ui.Button({ key: key + '-up', label: '+', onPress: onPlus }),
+]
+
+function editTabs(ui, vm, act) {
+  const tabs = SOUND_TABS.filter((n) => vm.heard[n] || n === vm.editTab)
+  return spread(ui, [
+    ...tabs.map((n) => toggle(ui, 'tab-' + n, tabName(n), vm.editTab === n, () => act.editTab(n))),
+    toggle(ui, 'tab-add', '+ sound', vm.editTab === 'add', () => act.editTab('add')),
+    dim(ui, '│'),
+    toggle(ui, 'tab-song', 'song', vm.editTab === 'song', () => act.editTab('song')),
+    toggle(ui, 'tab-master', 'master', vm.editTab === 'master', () => act.editTab('master')),
+  ], [
     vm.canUndo ? ui.Button({ key: 'undo', label: '↶ undo', onPress: () => act.undo(), hotkey: 'u' }) : null,
-    ui.Button({ key: 'share', label: '↗ share mp3', onPress: () => act.share() }),
-    dim(ui, 'click a sound name to mute it, a cell to add or remove a hit'),
-  ], { key: 'edit-line', columnGap: 2 })
+    ui.Button({ key: 'share', label: '↗ share', onPress: () => act.share() }),
+    ui.Button({ key: 'edit-done', label: 'done', onPress: () => act.edit() }),
+  ], 'edit-tabs')
+}
+
+function soundCard(ui, vm, act) {
+  const x = vm.info, L = x.layer
+  const tweak = (e) => () => act.tweak({ layer: L, ...e })
+  const rows = []
+  rows.push(line(ui, 'ed-sound', 'sound', x.insts.length
+    ? x.insts.map((it) => toggle(ui, 'inst-' + L + '-' + it.name, it.name, it.name === x.inst, tweak({ kind: 'inst', value: it.value })))
+    : [dim(ui, L === 'rumble' ? 'the kick through a long dark room' : L === 'pad' ? 'a dark chord, one swell a loop' : 'one sound')]))
+  rows.push(line(ui, 'ed-pattern', 'pattern', x.presets.length
+    ? [dim(ui, 'try:'), ...x.presets.map((p) => toggle(ui, 'pat-' + L + '-' + p.name, p.name, p.on, tweak({ kind: 'pattern', name: p.name }))), x.edited ? link(ui, 'pat-reset-' + L, 'as written', tweak({ kind: 'reset-pattern' })) : null, dim(ui, '· or click the grid')]
+    : [dim(ui, L === 'rumble' ? 'follows the kick' : 'one long swell')]))
+  if (x.notes) {
+    rows.push(line(ui, 'ed-notes', 'notes', [
+      ...x.notes.map((n, i) => (n ? ui.Button({ key: 'note-' + L + '-' + i, label: n, onPress: tweak({ kind: 'note', i }) }) : dim(ui, '·', { key: 'rest-' + L + '-' + i }))),
+      ui.Button({ key: 'notes-suggest-' + L, label: '⚄ suggest', onPress: tweak({ kind: 'suggest-notes' }) }),
+      x.notesEdited ? link(ui, 'notes-reset-' + L, 'as written', tweak({ kind: 'reset-notes' })) : null,
+    ]))
+    rows.push(line(ui, 'ed-scale', '', [dim(ui, 'scale ' + x.scale.join(' ') + ' · tap a note to move it up the scale')]))
+  }
+  if (x.hasTone) rows.push(line(ui, 'ed-tone', 'tone', [
+    ...stepper(ui, 'cut-' + L, CUT_WORDS, x.tone[0] + 3, tweak({ kind: 'tone', cut: -1 }), tweak({ kind: 'tone', cut: 1 })),
+    dim(ui, '·'), dim(ui, 'grit'),
+    ...stepper(ui, 'grit-' + L, GRIT_WORDS, x.tone[1], tweak({ kind: 'tone', grit: -1 }), tweak({ kind: 'tone', grit: 1 })),
+    dim(ui, '·'),
+    ui.Button({ key: 'mute-' + L, label: vm.heard[L] ? 'mute' : 'play it', onPress: () => act.layer(L) }),
+  ]))
+  return rows
+}
+
+function masterCard(ui, vm, act) {
+  const m = vm.master
+  const tw = (e) => () => act.tweak({ kind: 'master', ...e })
+  return [
+    line(ui, 'ed-lp', 'filter', [...stepper(ui, 'lp', LP_WORDS, m[0] + 3, tw({ lp: -1 }), tw({ lp: 1 })), dim(ui, '· close it for a muffled, far away sound')]),
+    line(ui, 'ed-hp', 'low cut', [...stepper(ui, 'hp', HP_WORDS, m[1], tw({ hp: -1 }), tw({ hp: 1 })), dim(ui, '· take the low end out')]),
+    line(ui, 'ed-space', 'space', [...stepper(ui, 'space', SPACE_WORDS, m[2] + 2, tw({ space: -1 }), tw({ space: 1 })), dim(ui, '· the room around it')]),
+    line(ui, 'ed-tempo', 'tempo', [ui.Button({ key: 'slower', label: '−', onPress: () => act.bpm(-2) }), ui.Text({ bold: true, children: [vm.view.bpm + ' bpm'] }), ui.Button({ key: 'faster', label: '+', onPress: () => act.bpm(2) }), m[0] || m[1] || m[2] ? link(ui, 'master-reset', 'as written', tw({ reset: true })) : null]),
+  ]
+}
+
+function addCard(ui, vm, act) {
+  const absent = SOUND_TABS.filter((n) => !vm.heard[n])
+  return [line(ui, 'ed-add', 'add', absent.length ? absent.map((n) => ui.Button({ key: 'add-' + n, label: '+ ' + tabName(n), onPress: () => { act.layer(n); act.editTab(n) } })) : [dim(ui, 'every sound plays')])]
+}
+
+// The song: its parts in order (× takes one out; not the one that plays),
+// the parts to add (★ the recommended one), and a new rhythm.
+function songCard(ui, vm, act) {
+  const tw = (e) => () => act.tweak(e)
+  return [
+    line(ui, 'ed-parts', 'parts', vm.plan.flatMap((p) => [
+      p.now ? ui.Text({ key: 'part-' + p.k, color: 'claude', bold: true, children: [p.name] }) : ui.Text({ key: 'part-' + p.k, children: [p.name] }),
+      p.now || vm.plan.length <= 2 ? null : link(ui, 'part-x-' + p.k, '×', tw({ kind: 'plan-remove', k: p.k })),
+    ].filter(Boolean))),
+    line(ui, 'ed-add-part', 'add', [
+      ...vm.planAdds.map((a) => ui.Button({ key: 'part-add-' + a.id, label: '+ ' + a.label + (a.best ? ' ★' : ''), onPress: tw({ kind: 'plan-add', id: a.id }) })),
+      vm.planEdited ? link(ui, 'plan-reset', 'as written', tw({ kind: 'plan-reset' })) : null,
+    ]),
+    line(ui, 'ed-rhythm', 'rhythm', [ui.Button({ key: 'dice', label: '⚄ new rhythm', onPress: () => act.dice(), hotkey: 'd' }), dim(ui, '· new patterns from the same name')]),
+  ]
+}
+
+function editCard(ui, vm, act) {
+  const body = vm.editTab === 'master' ? masterCard(ui, vm, act) : vm.editTab === 'song' ? songCard(ui, vm, act) : vm.editTab === 'add' ? addCard(ui, vm, act) : vm.info ? soundCard(ui, vm, act) : []
+  return col(ui, [editTabs(ui, vm, act), ...body], { key: 'edit-card', borderStyle: 'single', borderDimColor: true, paddingX: 1 })
 }
 
 const talkLine = (ui, vm) => (vm.said || vm.you ? row(ui, [vm.you ? dim(ui, 'you: ' + vm.you, { wrap: 'truncate-end' }) : null, vm.said ? ui.Text({ wrap: 'truncate-end', children: ['› ' + vm.said] }) : null], { key: 'talk', columnGap: 2 }) : null)
@@ -112,7 +196,7 @@ function deck(ui, vm, act) {
     whereLine(ui, vm),
     vm.gridEl,
     bottomLine(ui, vm, act),
-    vm.editOpen ? editLine(ui, vm, act) : null,
+    vm.editOpen ? editCard(ui, vm, act) : null,
     talkLine(ui, vm),
   ]
 }

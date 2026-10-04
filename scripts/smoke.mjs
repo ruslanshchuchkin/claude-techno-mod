@@ -2,7 +2,7 @@
 // every part of the plan renders, the handover renders, and a render is fast.
 // `claude plugin test` is the real test of the mod.
 import { readFileSync } from 'node:fs'
-import { trackFor, atPart, renderLoop, arrange, withVibe, PLAN, HANDOVER, VIBES, BUILDS, FALLS } from '../hooks/engine.js'
+import { trackFor, atPart, renderLoop, arrange, withVibe, PLAN, HANDOVERS, VIBES, BUILDS, FALLS, INSTRUMENTS, TONE_LAYERS, editTrack } from '../hooks/engine.js'
 import { newSet, loopSpec, afterLoop } from '../hooks/conductor.js'
 
 const fail = (msg) => { console.error('FAIL', msg); process.exitCode = 1 }
@@ -22,7 +22,8 @@ for (let p = 0; p < PLAN.length; p++) {
 }
 const set = newSet(atPart(t, PLAN.length - 1))
 afterLoop(set, { auto: true, nextTrack: () => trackFor('next one') })
-for (let i = 0; i < HANDOVER.length; i++) {
+const handoverSteps = HANDOVERS[set.handover.shape].steps.length
+for (let i = 0; i < handoverSteps; i++) {
   const spec = loopSpec(set, { auto: true })
   const r = renderLoop(spec.track, { with: spec.with })
   if (!r.left.some((x) => x !== 0)) fail('handover step ' + i + ' is silent')
@@ -46,6 +47,22 @@ for (const fall of [...FALLS, null]) {
   let peak = 0
   for (const x of r.left) peak = Math.max(peak, Math.abs(x))
   if (!(peak > 0.05 && peak <= 0.9)) fail(`fall ${fall ?? 'swell'} peak ${peak}`)
+}
+// every instrument, a tone on every sound and the master render in range
+{
+  let x = atPart(t, 9)
+  for (const [layer, list] of Object.entries(INSTRUMENTS)) {
+    for (let v = 0; v < list.length; v++) {
+      const r = renderLoop(editTrack(x, { kind: 'inst', layer, value: v }))
+      let peak = 0
+      for (const y of r.left) peak = Math.max(peak, Math.abs(y))
+      if (!(peak > 0.05 && peak <= 0.9)) fail(`${layer} ${list[v]} peak ${peak}`)
+    }
+  }
+  for (const layer of TONE_LAYERS) x = editTrack(x, { kind: 'tone', layer, cut: layer.length % 2 ? -2 : 2, grit: 2 })
+  x = editTrack(editTrack(x, { kind: 'master', lp: -2, hp: 1, space: 2 }), { kind: 'suggest-notes', layer: 'bass', seed: 1 })
+  const r = renderLoop({ ...x, layers: { acid: true } })
+  if (!r.left.some((y) => Math.abs(y) > 0.05)) fail('the edited track is silent')
 }
 // chords stay dark in every mood: no major third, no seventh over the root
 for (const v of VIBES) {

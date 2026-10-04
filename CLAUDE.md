@@ -19,7 +19,7 @@ Needs Claude Code v2.1.287 or later (built and checked on v2.1.288).
 | `hooks/hooks.json` | Points to the hooks module. |
 | `hooks/package.json` | `"type": "module"`, so node 20 runs the player (it imports `engine.js`). |
 | `hooks/register.js` | The chat side: a remote control for the player. Starts the player when none (or an older one) answers, polls its state every second, `/techno` command, `jam` tool, save and share. Every `$` call lives here (the validator refuses `$` passed to imported files). |
-| `hooks/views.js` | The app's screens as pure functions of `(ui, vm, act)`: the deck (layout A), favorites (with the tracks heard before), new track, and the bar shown while the app is hidden. |
+| `hooks/views.js` | The app's screens as pure functions of `(ui, vm, act)`: the deck (layout A with the skyline), the edit card (layout B), favorites (with the tracks heard before), new track, and the bar shown while the app is hidden. |
 | `hooks/grid.client.js` | A `Client` surface module: the step sequencer with its own playhead clock. Colors of empty cells and the playhead are theme keys (`subtle`, `text`), so it reads in light and dark. A click on a row name posts `{ toggle: layer }`; a click on a cell posts `{ step, layer }`. |
 | `hooks/engine.js` | The synth, `PLAN` (the set), `HANDOVER`, `render` (a folded loop, for mp3s), `renderLoop` (a loop with its tail, for the stream, optionally mixed with a second track). Plain JS with no Node or browser APIs. |
 | `hooks/conductor.js` | Pure: what each loop of a set plays (`loopSpec`), how auto moves on (`afterLoop`, `stepOn`), and the `mixer` that cuts loops into bars and carries the tails. Shared by the player and the scripts. |
@@ -33,7 +33,45 @@ Needs Claude Code v2.1.287 or later (built and checked on v2.1.288).
 
 ## Decisions
 
-### 0.8.3 and 0.8.4 (Ruslan, 2026-10-04), these win over older notes below
+### 0.9 (Ruslan, 2026-10-04), these win over older notes below
+
+- **The edit card, layout B "focus card"** (picked from A mixer, B focus
+  card, C say it; seeds `UQqiWLx8P0E6wCP`, `mLUEzDaS8jRVC4G`,
+  `yTXMi3ec7bCLbmE`). "edit" opens a card under the grid: tabs for the
+  sounds that play, `+ sound`, `song`, `master`; on the right undo, share,
+  done. The old edit row (new rhythm, the acid toggle "melody", tempo) is
+  gone ("i don't like that melody just adds acid"). Per sound:
+  - sound: `INSTRUMENTS` (kick deep/punchy/boom/hard, bass
+    rolling/sub/growl/acid, hats tight/long/metal/dusty, clap
+    room/snap/snare, perc rim/tom/bell, melody acid/square/pluck/soft).
+    Index 0 is the phrase's own sound. Share code `%<layer><n>`.
+  - pattern: `PATTERNS` to try, written as step edits (`setPattern`), plus
+    the grid clicks; "as written" clears them.
+  - notes (bass, melody): one button per hit, a tap moves it up the scale
+    (8 degrees, then back to the root); "suggest" writes a new line that fits
+    the scale (`suggestNotes`). Share code `~<layer><16 chars>`, a scale
+    degree 0-9a-e per step or `.`.
+  - tone: cut (muffled .. thin, a low-pass or a high-pass on the sound) and
+    grit (clean .. crushed). Share code `^<layer><cut+3><grit>`.
+  - master: filter (a low-pass), low cut (a high-pass), space (the reverb),
+    tempo. Share code `!<lp+3><hp><space+2>`.
+  - song: the parts in order with × (not the one that plays), "+ breakdown
+    and a drop", "+ longer groove", "+ longer build", "+ a breakdown" (★ on
+    the recommended one, `planAdds`), new rhythm. The track keeps its own
+    `plan` (PLAN indexes; share code `/` + hex). The set walks it by
+    position (`set.at`, `posOf`); a build-up goes on the part before every
+    drop, a fall on every drop, wherever they sit.
+  Every action is `editTrack(track, { kind, layer, ... })` in engine.js; the
+  player takes `{ op: 'edit', ... }` (plan kinds go to `planEdit`, which
+  keeps the set's place).
+- **The auto handover starts the next song from its kick or its hats**
+  ("yes start the next song from the kick or hihats"). `HANDOVERS`: `kick`
+  (the old song thins to kick and hats, the new one starts at part 0) or
+  `hats` (the new hats come in over the old low end, then it lands at part
+  2). `transitionsOf(old).land` picks it by mood. Two steps of two loops,
+  then the swap build-up and a crash and boom on the landing.
+
+### 0.8.3 to 0.8.5 (Ruslan, 2026-10-04)
 
 - **Auto makes everything; manual is where you make it** ("i want auto to
   make everything for me"). Auto picks the parts, the transitions, and later
@@ -59,7 +97,7 @@ Needs Claude Code v2.1.287 or later (built and checked on v2.1.288).
 - **⏭, ⏮ and a pick start the song from its beginning** (0.8.5, "new track
   didn't start from the beginning but from stage 3"), on the next bar. Only
   the auto handover after an outro still brings the next song in at its
-  build (`HANDOVER_TO`).
+  build (0.9: it starts the next song from its kick or its hats too).
 - **The bar uses the same transport** (`transport()` in views.js): ♪ ⏮ ■ ⏭,
   the track, ♡, mood and bpm, the part; auto, open and × stick to the right.
 - **Transitions, picked by the song** (0.8.4, Ruslan: "i love all 3! add
@@ -102,7 +140,7 @@ Needs Claude Code v2.1.287 or later (built and checked on v2.1.288).
   The old picked-scale chord was 1-3-5-7 of the scale, a dominant seventh on
   hijaz ("on mysterious they destroy the vibe, something is off", 2026-10-04). `stab` still
   exists for old codes and Claude.
-- **Handover A** (picked from three drawn options). After the outro the old
+- **Handover A** (picked from three drawn options; 0.9 replaced its shape, see above). After the outro the old
   track takes one layer out per step while the new one brings one in, then
   the whole low end swaps at once (`HANDOVER`, 3 steps of 2 loops). The new
   track goes on from its build (`HANDOVER_TO` = 4), at the old tempo. Nothing
@@ -255,7 +293,9 @@ Needs Claude Code v2.1.287 or later (built and checked on v2.1.288).
 
 ## Share code format
 
-`<phrase-with-hyphens>@<bpm>m<mood>e<energy>[d<dice>][s<swing>][t<transpose>][k<scale>][p<old part>|a<part>][+layer|-layer...][*<layer><on hex4><off hex4>...]`
+`<phrase-with-hyphens>@<bpm>m<mood>e<energy>[d<dice>][s<swing>][t<transpose>][k<scale>][p<old part>|a<part>][+layer|-layer...][*<layer><on hex4><off hex4>...][%<layer><instrument>...][~<layer><16 degrees>...][^<layer><cut+3><grit>...][!<lp+3><hp><space+2>][/<plan in hex>]`
+
+The fields after `*` are 0.9 (the edit card); see Decisions 0.9.
 
 Example: `late-night-deploy@131m1e2d3a4+acid-hats*kick00040000`. `k` is a picked
 scale (0..4, see `SCALES`); without it the mood picks. `a` is the part of

@@ -3,9 +3,9 @@
 // handlers (`act`), and return a tree. No mods API here; register.js owns
 // the calls to the player.
 //
-// Layout A with the skyline (Ruslan, 2026-10-04): one line on top (previous,
+// Layout A with the song as words (Ruslan, 2026-10-04): one line on top (previous,
 // play and next track side by side, the track, favorite, mood and tempo; auto
-// and hide on the right), the skyline of the set, the grid, one line under it
+// and hide on the right), the sections of the song, the grid, one line under it
 // (mood, next part, edit, favorites), and the edit line when edit is open.
 // Three screens: the deck, the favorites (with the tracks you heard), and new
 // tracks.
@@ -44,38 +44,44 @@ function topLine(ui, vm, act) {
   ], 'top')
 }
 
-// The skyline: the shape of the set, a low block calm and a tall one a drop.
-// What played is in the text color, the cell that plays now in the accent,
-// the rest dim. It never wraps: it has as many cells as the band has room for
-// (two a loop when there is room, fewer in a narrow window, each the loop
-// at its middle). The part and the time sit beside it, or under it when
-// they do not fit.
-const BLOCKS = ['▁', '▂', '▄', '█']
-export function skyline(loops, pos, room) {
-  const n = Math.max(11, Math.min(loops.length * 2, room))
-  const per = loops.length / n
-  const cells = Array.from({ length: n }, (_, i) => BLOCKS[Math.min(3, loops[Math.floor((i + 0.5) * per)] ?? 0)])
-  return { cells, at: Math.min(n, Math.floor((pos / loops.length) * n)) }
+// Where the song is, option C (Ruslan, 2026-10-04: "named sections, every
+// part has its word, the current one underlined"): one word per section of
+// the track's plan (the parts of a section side by side are one word; a drop
+// keeps its number). What played is in the text color, the section that
+// plays now is underlined in the accent, what comes is dim. Then, with auto,
+// when the next section starts, and the time in the song.
+const SECTION_WORDS = { intro: 'intro', groove: 'groove', build: 'build', break: 'break', outro: 'outro' }
+export function sections(parts, pos) {
+  const out = []
+  let from = 0
+  for (const p of parts) {
+    const word = p.section === 'drop' ? p.name : SECTION_WORDS[p.section] ?? p.name
+    const last = out[out.length - 1]
+    if (last && last.word === word) last.to += p.loops
+    else out.push({ word, from, to: from + p.loops })
+    from += p.loops
+  }
+  for (const x of out) x.state = pos >= x.to ? 'played' : pos >= x.from ? 'now' : 'next'
+  return out
 }
 
 function whereLine(ui, vm) {
   const v = vm.view, w = vm.where
   if (!w) return null
-  const room = Math.max(11, (vm.columns ?? 100) - 4)
-  const label = (v.section === 'handover' ? 'mixing in' : v.name) + ' · ' + clock(w.elapsed) + ' / ' + clock(w.total) + (v.from ? ' ← from ' + v.from : '')
-  const beside = room >= w.loops.length * 2 + 2 + label.length
-  const { cells, at } = skyline(w.loops, w.pos, beside ? w.loops.length * 2 : room)
-  const sky = ui.Box({ key: 'sky', flexDirection: 'row', flexShrink: 0, children: [
-    at > 0 ? ui.Text({ wrap: 'truncate', children: [cells.slice(0, at).join('')] }) : null,
-    at < cells.length ? ui.Text({ color: 'claude', bold: true, children: [cells[at]] }) : null,
-    at + 1 < cells.length ? dim(ui, cells.slice(at + 1).join(''), { wrap: 'truncate' }) : null,
-  ].filter(Boolean) })
-  const text = row(ui, [
-    ui.Text({ color: 'claude', bold: true, children: [v.section === 'handover' ? 'mixing in' : v.name] }),
-    dim(ui, '· ' + clock(w.elapsed) + ' / ' + clock(w.total)),
+  const list = sections(w.parts, w.pos)
+  const now = list.find((x) => x.state === 'now')
+  const next = now ? list[list.indexOf(now) + 1] : null
+  const words = list.map((x, i) => x.state === 'now'
+    ? ui.Text({ key: 'sec-' + i, color: 'claude', bold: true, underline: true, children: [x.word] })
+    : x.state === 'played' ? ui.Text({ key: 'sec-' + i, children: [x.word] }) : dim(ui, x.word, { key: 'sec-' + i }))
+  return spread(ui, [
+    ...words,
+    v.section === 'handover' ? ui.Text({ color: 'claude', bold: true, underline: true, children: ['mixing in'] }) : null,
     v.from ? dim(ui, '← from ' + v.from, { wrap: 'truncate-end' }) : null,
-  ], { key: 'where-text', columnGap: 1 })
-  return beside ? ui.Box({ key: 'where', flexDirection: 'row', columnGap: 2, alignItems: 'center', children: [sky, text] }) : col(ui, [sky, text], { key: 'where' })
+  ], [
+    next && vm.auto ? dim(ui, next.word + ' in ' + clock((now.to - w.pos) * w.loopMs) + ' ·') : null,
+    dim(ui, clock(w.elapsed) + ' / ' + clock(w.total)),
+  ], 'where')
 }
 
 function bottomLine(ui, vm, act) {

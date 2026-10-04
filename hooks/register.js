@@ -14,7 +14,7 @@ import { appView, miniView } from './views.js'
 const TOOL = 'mcp__techno__jam'
 // The plugin version: in the jam tool's answer, and the player of an older
 // version is replaced by this one. Keep it equal to plugin.json (a test checks).
-const VERSION = '0.9.0'
+const VERSION = '0.9.1'
 // [accent, normal] fill of a hit in the step grid
 const LAYER_COLORS = {
   kick: ['#e85a5a', '#c94040'],
@@ -324,8 +324,8 @@ export function register(on) {
     const sinceBar = looping ? Math.max(0, now - ps.barStartedAt) : 0
     const step = looping ? (v.bar * 16 + Math.min(15, Math.floor(sinceBar / ps.stepMs))) % 128 : 0
     const nextIn = ps?.nextInMs !== null && ps?.nextInMs !== undefined ? Math.max(0, ps.nextInMs - (now - ps.now)) : null
-    // where the set is, for the skyline: the energy of every loop of the
-    // set, and how far in it plays (in loops)
+    // where the set is, for the section words: the parts of the plan and
+    // how far in the set it plays (in loops)
     let where = null
     if (v) {
       const barMs = ps.barMs || 1800
@@ -336,13 +336,12 @@ export function register(on) {
       const before = loops.slice(0, at).reduce((n, x) => n + x, 0)
       const inPart = v.part === null ? 0 : Math.max(0, loops[at] - v.loopsLeft)
       const pos = Math.min(totalLoops, before + inPart + (v.part === null ? 0 : (v.bar + Math.min(1, sinceBar / barMs)) / 8))
-      where = { loops: plan.flatMap((k) => Array(PLAN[k].loops).fill(PLAN[k].energy)), pos, elapsed: pos * 8 * barMs, total: totalLoops * 8 * barMs }
+      where = { parts: plan.map((k) => ({ name: PLAN[k].name, section: PLAN[k].section, loops: PLAN[k].loops })), pos, loopMs: 8 * barMs, elapsed: pos * 8 * barMs, total: totalLoops * 8 * barMs }
     }
     // the edit card opens on the bass (or the first sound that plays)
     const editTab = s.editTab ?? (heard.bass ? 'bass' : ['kick', 'hats', 'acid'].find((n) => heard[n]) ?? 'kick')
     const vm = {
       surface: e.surface,
-      columns: e.viewport?.columns ?? 100,
       screen: s.screen,
       down: s.down,
       ps,

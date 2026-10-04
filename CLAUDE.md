@@ -35,6 +35,16 @@ Needs Claude Code v2.1.287 or later (built and checked on v2.1.288).
 
 ### 0.9 (Ruslan, 2026-10-04), these win over older notes below
 
+- **The song as words, option C** (0.9.1, Ruslan: "named sections, every
+  part has its word, the current one underlined"). It replaces the skyline
+  under the top line: `intro groove build drop 1 break drop 2 break drop 3
+  outro`, from the track's plan (`sections()` in views.js; parts of one
+  section side by side are one word, a drop keeps its number). Played in the
+  text color, the one that plays now underlined in the accent, the rest dim.
+  On the right, with auto, `break in 0:37 ·` (when the next section starts),
+  then `2:43 / 6:26`. The words wrap in a narrow window. `where.parts` in the
+  view model.
+
 - **The edit card, layout B "focus card"** (picked from A mixer, B focus
   card, C say it; seeds `UQqiWLx8P0E6wCP`, `mLUEzDaS8jRVC4G`,
   `yTXMi3ec7bCLbmE`). "edit" opens a card under the grid: tabs for the
@@ -84,8 +94,8 @@ Needs Claude Code v2.1.287 or later (built and checked on v2.1.288).
 - **The deck top line**: ⏮ ■ ⏭ side by side on the left (⏭ is always the
   next track, `skip`), then the track, ♡, `· mood · bpm`. On the right: auto,
   hide. The "drop 3 → outro" line is gone.
-- **The skyline, option B** (picked from A inline bar, B skyline, C named
-  sections). One line under the top: the shape of the set, two cells a loop
+- **The skyline, option B** (0.9.1 replaced it with option C, see above;
+  picked from A inline bar, B skyline, C named sections). One line under the top: the shape of the set, two cells a loop
   (`▁` calm .. `█` drop), played cells in the text color, the cell that
   plays now in the accent (`claude` theme key), the rest dim, then the part
   name and `4:15 / 6:45`. `where` in the view model (register.js) holds the

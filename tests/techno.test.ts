@@ -1,7 +1,7 @@
 import { expect, mock, test } from 'claude-code/testing'
 import { atPart, encodeCode, parseCode, toggleStep, trackFor, moodName, withVibe, activeLayers, transitionsOf, editTrack, planOf, planAdd, grid, soundInfo, INSTRUMENTS, PLAN, HANDOVERS, HANDOVER_LOOPS, BUILDS, FALLS } from '../hooks/engine.js'
 import { newSet, loopSpec, afterLoop, stepOn, posOf } from '../hooks/conductor.js'
-import { skyline } from '../hooks/views.js'
+import { sections } from '../hooks/views.js'
 
 // What Claude Code passes to the band's ui.render hook, apart from the app
 const PANE = {
@@ -321,15 +321,16 @@ test('only auto plays the transitions; the drop after a build-up gets its boom, 
   expect(loopSpec(h, { auto: true })).toMatchObject({ impact: true, build: fx.swap })
 })
 
-test('the skyline fits the band: two cells a loop when there is room, never more cells than columns', () => {
-  const loops = PLAN.flatMap((p) => Array(p.loops).fill(p.energy))
-  for (const room of [11, 30, 41, 54, 200]) {
-    const { cells, at } = skyline(loops, loops.length / 2, room)
-    expect(cells.length).toBe(Math.max(11, Math.min(loops.length * 2, room)))
-    expect(at).toBe(Math.floor(cells.length / 2))
-    // the three drops stay apart once the band has 20 cells
-    if (room >= 20) expect(cells.join('').match(/█+/g)?.length).toBe(3)
-  }
+test('the song as words: one per section, a drop keeps its number, the current one is the one that plays', () => {
+  const parts = PLAN.map((p) => ({ name: p.name, section: p.section, loops: p.loops }))
+  const at = (pos: number) => sections(parts, pos)
+  expect(at(0).map((x: any) => x.word)).toEqual(['intro', 'groove', 'build', 'drop 1', 'break', 'drop 2', 'break', 'drop 3', 'outro'])
+  expect(at(0)[0].state).toBe('now')
+  // 11 loops in: past the intro, groove and build (10 loops), one loop into drop 1
+  const mid = at(11)
+  expect(mid.find((x: any) => x.state === 'now').word).toBe('drop 1')
+  expect(mid.filter((x: any) => x.state === 'played').length).toBe(3)
+  expect(mid.filter((x: any) => x.state === 'next').length).toBe(5)
 })
 
 test('edit opens the card: instruments, patterns, notes and tone for a sound, the master, and the song parts', async ($, on) => {

@@ -15,9 +15,9 @@ let loops = 0, handedOver = false, after = 0
 const t0 = performance.now()
 while (true) {
   const spec = loopSpec(set, { auto: true })
-  const r = renderLoop(spec.track, { rise: spec.rise, impact: spec.impact, with: spec.with })
+  const r = renderLoop(spec.track, { rise: spec.rise, impact: spec.impact, build: spec.build, fall: spec.fall, swell: spec.swell, with: spec.with })
   const where = set.handover ? `handover ${set.handover.step + 1}` : `${PLAN[set.track.part].name}`
-  console.log(String(loops).padStart(2), (bars.reduce((s, x) => s + x.length / 2, 0) / 44100).toFixed(0).padStart(4) + 's', set.track.phrase.padEnd(16), where, spec.rise ? '(rise)' : '', spec.impact ? '(crash)' : '')
+  console.log(String(loops).padStart(2), (bars.reduce((s, x) => s + x.length / 2, 0) / 44100).toFixed(0).padStart(4) + 's', set.track.phrase.padEnd(16), where.padEnd(14), spec.rise ? 'build: ' + spec.build : '', spec.impact ? 'crash' + (spec.build ? ' + boom' : '') : '', spec.fall ? 'fall: ' + spec.fall : '', spec.swell ? 'swell' : '')
   for (let k = 0; k < 8; k++) bars.push(mix.bar(r, k))
   loops++
   if (set.handover) handedOver = true

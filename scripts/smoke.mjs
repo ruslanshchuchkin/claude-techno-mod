@@ -2,7 +2,7 @@
 // every part of the plan renders, the handover renders, and a render is fast.
 // `claude plugin test` is the real test of the mod.
 import { readFileSync } from 'node:fs'
-import { trackFor, atPart, renderLoop, arrange, withVibe, PLAN, HANDOVER, VIBES, BUILDS } from '../hooks/engine.js'
+import { trackFor, atPart, renderLoop, arrange, withVibe, PLAN, HANDOVER, VIBES, BUILDS, FALLS } from '../hooks/engine.js'
 import { newSet, loopSpec, afterLoop } from '../hooks/conductor.js'
 
 const fail = (msg) => { console.error('FAIL', msg); process.exitCode = 1 }
@@ -39,6 +39,13 @@ for (const build of BUILDS) {
   if (!(peak > 0.05 && peak <= 0.9)) fail(`build ${build} peak ${peak}`)
   const lastBeat = r.left.subarray(r.loop - Math.round(r.stepSeconds * 44100 * 2), r.loop)
   if (build === 'filter' && lastBeat.some((x) => Math.abs(x) > 1e-4)) fail('the filter build is not silent before the drop')
+}
+// every fall renders the last loop of a drop, and the swell the loop before a new sound
+for (const fall of [...FALLS, null]) {
+  const r = renderLoop(atPart(t, 5), { fall, swell: fall === null })
+  let peak = 0
+  for (const x of r.left) peak = Math.max(peak, Math.abs(x))
+  if (!(peak > 0.05 && peak <= 0.9)) fail(`fall ${fall ?? 'swell'} peak ${peak}`)
 }
 // chords stay dark in every mood: no major third, no seventh over the root
 for (const v of VIBES) {

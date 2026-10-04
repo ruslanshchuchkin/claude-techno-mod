@@ -156,7 +156,7 @@ function renderFor(spec) {
   const key = C.specKey(spec) + (v ? '|v' : '')
   if (!renders.has(key)) {
     if (renders.size > 6) renders.delete(renders.keys().next().value)
-    renders.set(key, E.renderLoop(spec.track, { rise: spec.rise, impact: spec.impact, with: spec.with, voices: v }))
+    renders.set(key, E.renderLoop(spec.track, { rise: spec.rise, impact: spec.impact, build: spec.build, fall: spec.fall, swell: spec.swell, with: spec.with, voices: v }))
   }
   return renders.get(key)
 }

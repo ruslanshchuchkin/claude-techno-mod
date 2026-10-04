@@ -25,15 +25,15 @@ Needs Claude Code v2.1.287 or later (built and checked on v2.1.288).
 | `hooks/conductor.js` | Pure: what each loop of a set plays (`loopSpec`), how auto moves on (`afterLoop`, `stepOn`), and the `mixer` that cuts loops into bars and carries the tails. Shared by the player and the scripts. |
 | `player/techno.mjs` | The background player (node). Owns the set, auto, favorites, history and undo; renders a loop ahead and feeds bars to the helper; answers chats on a Unix socket (`GET /state`, `POST /cmd`). |
 | `player/TechnoPlayer.swift` | The helper app: plays the bars gaplessly (AVAudioSourceNode), shows "Now Playing" in Control Center, passes the media keys back. The player compiles it with `swiftc` into `~/Library/Caches/techno/TechnoPlayer.app` when the source changes. |
-| `scripts/set.mjs` | Render a whole auto set with the handover to a WAV: `node scripts/set.mjs "ship it" "warehouse 4am" out.wav`. |
+| `scripts/set.mjs` | Render a whole auto set with the handover to a WAV, and print each loop with its transitions: `node scripts/set.mjs "ship it" "warehouse 4am" out.wav`. |
 | `scripts/render.mjs` | Render one loop to a WAV: `node scripts/render.mjs "phrase" out.wav [repeats]`. |
 | `scripts/buildups.mjs` | Render the build into drop 1 once per build-up pack (`0-now`, `1-riser`, `2-filter`, `3-echo`) to compare them: `node scripts/buildups.mjs "late night deploy" previews/buildups`. |
-| `scripts/smoke.mjs` | Fast node checks: version match, every part renders, the handover renders, every build-up pack renders. |
+| `scripts/smoke.mjs` | Fast node checks: version match, every part renders, the handover renders, every build, fall and the swell render. |
 | `tests/techno.test.ts` | Real tests for `claude plugin test`, against a fake player on the socket. |
 
 ## Decisions
 
-### 0.8.3 (Ruslan, 2026-10-04), these win over older notes below
+### 0.8.3 and 0.8.4 (Ruslan, 2026-10-04), these win over older notes below
 
 - **Auto makes everything; manual is where you make it** ("i want auto to
   make everything for me"). Auto picks the parts, the transitions, and later
@@ -54,12 +54,29 @@ Needs Claude Code v2.1.287 or later (built and checked on v2.1.288).
   shape, the cell and the times; `whereLine` in views.js draws it.
 - **The bar uses the same transport** (`transport()` in views.js): ♪ ⏮ ■ ⏭,
   the track, ♡, mood and bpm, the part; auto, open and × stick to the right.
-- **Build-up packs, pick pending** (`build` in `mixdown`, `BUILDS`):
-  `riser` (an 8-bar riser, a clap roll that speeds up), `filter` (the mix
-  closes into a resonant low-pass, then one beat of silence), `echo` (the
-  bass fades out, the last bar is one clap thrown into a long echo, a
-  reversed crash). Each puts a boom under the drop. `build: null` is the 0.8
-  sound, and the player still plays that until Ruslan picks.
+- **Transitions, picked by the song** (0.8.4, Ruslan: "i love all 3! add
+  them and more ... do it randomly ... but so that it always fits the
+  song"). `transitionsOf(track)` in engine.js, seeded by phrase and dice, so
+  a share code always plays the same ones. Auto only (`loopSpec`):
+  - build, the last loop before each drop (`BUILDS`): `riser` (8-bar riser,
+    a clap roll that speeds up), `filter` (resonant low-pass closes, one beat
+    of silence), `echo` (bass fades, one clap thrown into a long echo, a
+    reversed crash), `stutter` (4-bar riser, the last bar repeats its first
+    beat in 1/8, 1/16, 1/32 slices through an opening high-pass). The drop
+    after it gets a crash and a boom.
+  - fall, the last loop of each drop (`FALLS`): `tapestop` (the last two
+    beats slow to a stop), `washout` (the last bar fades into a big reverb
+    and echo), `downlifter` (falling noise into the next part).
+  - swell: a one-beat reversed cymbal before a new sound in the intro and
+    groove (each about 60% of the time).
+  - swap: a build-up on the last handover loop; the new track lands with a
+    crash and a boom (`set.swapped`).
+  The fit rules: the mood weights the packs (`BUILD_WEIGHTS`, `FALL_WEIGHTS`:
+  sad leans riser and filter, dark leans filter, echo, stutter; dark falls
+  lean tapestop), never the same build or fall twice in a row, the last drop
+  gets riser or filter, the swap differs from the last build.
+  Listen: `node scripts/set.mjs "late night deploy" "warehouse 4am" out.wav 2`
+  prints every transition it plays.
 
 ### 0.8 (Ruslan, 2026-10-03), these win over older notes below
 
@@ -262,7 +279,8 @@ Do not change the meaning of an existing field: old codes must keep playing the 
 - `node scripts/smoke.mjs`: version, every part and the handover render.
 - Listen to a whole set: `node scripts/set.mjs "ship it" "warehouse 4am" /tmp/set.wav`.
 - Run the player without sound and away from the real state:
-  `TECHNO_DIR=/tmp/tt TECHNO_GAIN=0 node player/techno.mjs`, then
+  `TECHNO_DIR=/tmp/tt TECHNO_GAIN=0 node player/techno.mjs`. Stop it by its
+  pid only: `pkill -f player/techno.mjs` also kills the real player. Then
   `curl --unix-socket /tmp/tt/cache/techno.sock -X POST localhost/cmd -d '{"op":"play"}'`.
 - `claude plugin validate .` and `claude plugin test`: the real checks. A test
   that presses NEXT many times needs `{ timeoutMs: 30000 }`: each part renders.

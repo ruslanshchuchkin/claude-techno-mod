@@ -1,5 +1,5 @@
 import { expect, mock, test } from 'claude-code/testing'
-import { atPart, encodeCode, parseCode, toggleStep, trackFor, moodName, withVibe, activeLayers, PLAN, HANDOVER, HANDOVER_LOOPS, HANDOVER_TO } from '../hooks/engine.js'
+import { atPart, encodeCode, parseCode, toggleStep, trackFor, moodName, withVibe, activeLayers, transitionsOf, PLAN, HANDOVER, HANDOVER_LOOPS, HANDOVER_TO, BUILDS, FALLS } from '../hooks/engine.js'
 import { newSet, loopSpec, afterLoop, stepOn } from '../hooks/conductor.js'
 
 // What Claude Code passes to the band's ui.render hook, apart from the app
@@ -265,4 +265,47 @@ test('/techno and the jam tool exist even when the player cannot start', async (
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   expect(await ui.find({ key: 'retry' })).toBeDefined()
   await ui.unmount()
+})
+
+test('auto picks the transitions from the track: the same every time, never twice in a row, the biggest build for the last drop', () => {
+  const rises = PLAN.map((p, i) => (p.rise ? i : -1)).filter((i) => i >= 0)
+  const drops = PLAN.map((p, i) => (p.section === 'drop' ? i : -1)).filter((i) => i >= 0)
+  const seen = new Set<string>()
+  for (let n = 0; n < 200; n++) {
+    const t = trackFor('phrase ' + n)
+    const fx = transitionsOf(t)
+    expect(transitionsOf(t)).toEqual(fx)
+    const builds = rises.map((i) => fx.build[i]), falls = drops.map((i) => fx.fall[i])
+    for (const b of builds) expect(BUILDS).toContain(b)
+    for (const f of falls) expect(FALLS).toContain(f)
+    for (let k = 1; k < builds.length; k++) expect(builds[k]).not.toBe(builds[k - 1])
+    for (let k = 1; k < falls.length; k++) expect(falls[k]).not.toBe(falls[k - 1])
+    expect(['riser', 'filter']).toContain(builds.at(-1))
+    expect(fx.swap).not.toBe(builds.at(-1))
+    for (const x of [...builds, ...falls, fx.swap]) seen.add(x)
+  }
+  // across tracks, every pack and every fall plays somewhere
+  for (const x of [...BUILDS, ...FALLS]) expect(seen.has(x)).toBe(true)
+})
+
+test('only auto plays the transitions; the drop after a build-up gets its boom, the new track after a swap too', () => {
+  const t = trackFor('late night deploy')
+  const fx = transitionsOf(t)
+  const set = newSet(atPart(t, 4))
+  set.loop = PLAN[4].loops - 1
+  expect(loopSpec(set, { auto: false })).toMatchObject({ rise: false, build: null, fall: null, swell: false })
+  expect(loopSpec(set, { auto: true })).toMatchObject({ rise: true, build: fx.build[4] })
+  stepOn(set, () => t)
+  expect(loopSpec(set, { auto: true })).toMatchObject({ impact: true, build: fx.build[4] })
+  set.loop = PLAN[5].loops - 1
+  expect(loopSpec(set, { auto: true })).toMatchObject({ fall: fx.fall[5] })
+  // the handover: a build-up on its last loop, then the new track lands with a boom
+  const h = newSet(atPart(t, PLAN.length - 1))
+  const next = trackFor('ship it')
+  afterLoop(h, { auto: true, nextTrack: () => next })
+  for (let k = 0; k < HANDOVER.length * HANDOVER_LOOPS - 1; k++) afterLoop(h, { auto: true, nextTrack: () => next })
+  expect(loopSpec(h, { auto: true })).toMatchObject({ rise: true, build: fx.swap })
+  afterLoop(h, { auto: true, nextTrack: () => next })
+  expect(h.handover).toBe(null)
+  expect(loopSpec(h, { auto: true })).toMatchObject({ impact: true, build: fx.swap })
 })

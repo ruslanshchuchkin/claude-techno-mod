@@ -319,20 +319,20 @@ function takeNext() {
   return peekNext()
 }
 
-// Jump to a track while music plays: it comes in at its build, on the next bar.
+// Jump to a track: it starts from its beginning, on the next bar (Ruslan,
+// 2026-10-04: "new track didn't start from the beginning"). Only the auto
+// handover after an outro brings the next track in at its build.
 function jumpTo(track) {
   edit((set) => {
     remember(set.track)
-    const t = E.cleanTrack(track)
-    Object.assign(set, C.newSet(E.atPart(t, st.playing ? E.HANDOVER_TO : 0)))
+    Object.assign(set, C.newSet(E.atPart(E.cleanTrack(track), 0)), { handover: null, swapped: null })
   })
 }
 
 function skip() {
   edit((set) => {
-    if (set.handover) { set.handover = null; return }
-    set.track = E.atPart(set.track, E.PLAN.length - 1)
-    C.stepOn(set, takeNext)
+    const next = set.handover ? set.track : takeNext()
+    Object.assign(set, C.newSet(E.atPart(E.cleanTrack(next), 0)), { handover: null, swapped: null })
   })
 }
 

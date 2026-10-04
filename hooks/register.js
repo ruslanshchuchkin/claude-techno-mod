@@ -14,7 +14,7 @@ import { appView, miniView } from './views.js'
 const TOOL = 'mcp__techno__jam'
 // The plugin version: in the jam tool's answer, and the player of an older
 // version is replaced by this one. Keep it equal to plugin.json (a test checks).
-const VERSION = '0.8.4'
+const VERSION = '0.8.5'
 // [accent, normal] fill of a hit in the step grid
 const LAYER_COLORS = {
   kick: ['#e85a5a', '#c94040'],
@@ -323,20 +323,20 @@ export function register(on) {
     const sinceBar = looping ? Math.max(0, now - ps.barStartedAt) : 0
     const step = looping ? (v.bar * 16 + Math.min(15, Math.floor(sinceBar / ps.stepMs))) % 128 : 0
     const nextIn = ps?.nextInMs !== null && ps?.nextInMs !== undefined ? Math.max(0, ps.nextInMs - (now - ps.now)) : null
-    // where the set is, for the skyline: two cells a loop (bars 1-4, 5-8)
+    // where the set is, for the skyline: the energy of every loop of the
+    // set, and how far in it plays (in loops)
     let where = null
     if (v) {
-      const loopMs = (ps.barMs || 1800) * 8
+      const barMs = ps.barMs || 1800
       const totalLoops = PLAN.reduce((n, p) => n + p.loops, 0)
       const before = v.part === null ? totalLoops : PLAN.slice(0, v.part).reduce((n, p) => n + p.loops, 0)
       const inPart = v.part === null ? 0 : Math.max(0, PLAN[v.part].loops - v.loopsLeft)
-      const loopsIn = Math.min(totalLoops, before + inPart)
-      const cell = v.part === null ? totalLoops * 2 : loopsIn * 2 + (v.bar >= 4 ? 1 : 0)
-      const elapsed = Math.min(totalLoops * loopMs, loopsIn * loopMs + v.bar * (ps.barMs || 1800) + Math.min(sinceBar, ps.barMs || 0))
-      where = { shape: PLAN.flatMap((p) => Array(p.loops * 2).fill(p.energy)), cell, elapsed, total: totalLoops * loopMs }
+      const pos = Math.min(totalLoops, before + inPart + (v.part === null ? 0 : (v.bar + Math.min(1, sinceBar / barMs)) / 8))
+      where = { loops: PLAN.flatMap((p) => Array(p.loops).fill(p.energy)), pos, elapsed: pos * 8 * barMs, total: totalLoops * 8 * barMs }
     }
     const vm = {
       surface: e.surface,
+      columns: e.viewport?.columns ?? 100,
       screen: s.screen,
       down: s.down,
       ps,

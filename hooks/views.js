@@ -44,25 +44,38 @@ function topLine(ui, vm, act) {
   ], 'top')
 }
 
-// The skyline: the shape of the set, two cells a loop, a low block calm and a
-// tall one a drop. What played is in the text color, the cell that plays now
-// in the accent, the rest dim. Then the part and the time in the set.
+// The skyline: the shape of the set, a low block calm and a tall one a drop.
+// What played is in the text color, the cell that plays now in the accent,
+// the rest dim. It never wraps: it has as many cells as the band has room for
+// (two a loop when there is room, fewer in a narrow window, each the loop
+// at its middle). The part and the time sit beside it, or under it when
+// they do not fit.
 const BLOCKS = ['▁', '▂', '▄', '█']
+export function skyline(loops, pos, room) {
+  const n = Math.max(11, Math.min(loops.length * 2, room))
+  const per = loops.length / n
+  const cells = Array.from({ length: n }, (_, i) => BLOCKS[Math.min(3, loops[Math.floor((i + 0.5) * per)] ?? 0)])
+  return { cells, at: Math.min(n, Math.floor((pos / loops.length) * n)) }
+}
+
 function whereLine(ui, vm) {
   const v = vm.view, w = vm.where
   if (!w) return null
-  const cells = w.shape.map((e) => BLOCKS[Math.min(3, e)])
-  const at = Math.min(w.cell, cells.length)
-  return row(ui, [
-    ui.Box({ flexDirection: 'row', children: [
-      ui.Text({ children: [cells.slice(0, at).join('')] }),
-      at < cells.length ? ui.Text({ color: 'claude', bold: true, children: [cells[at]] }) : null,
-      at + 1 < cells.length ? dim(ui, cells.slice(at + 1).join('')) : null,
-    ].filter(Boolean) }),
-    v.section === 'handover' ? ui.Text({ color: 'claude', bold: true, children: ['mixing in'] }) : ui.Text({ color: 'claude', bold: true, children: [v.name] }),
-    v.from ? dim(ui, '← from ' + v.from, { wrap: 'truncate-end' }) : null,
+  const room = Math.max(11, (vm.columns ?? 100) - 4)
+  const label = (v.section === 'handover' ? 'mixing in' : v.name) + ' · ' + clock(w.elapsed) + ' / ' + clock(w.total) + (v.from ? ' ← from ' + v.from : '')
+  const beside = room >= w.loops.length * 2 + 2 + label.length
+  const { cells, at } = skyline(w.loops, w.pos, beside ? w.loops.length * 2 : room)
+  const sky = ui.Box({ key: 'sky', flexDirection: 'row', flexShrink: 0, children: [
+    at > 0 ? ui.Text({ wrap: 'truncate', children: [cells.slice(0, at).join('')] }) : null,
+    at < cells.length ? ui.Text({ color: 'claude', bold: true, children: [cells[at]] }) : null,
+    at + 1 < cells.length ? dim(ui, cells.slice(at + 1).join(''), { wrap: 'truncate' }) : null,
+  ].filter(Boolean) })
+  const text = row(ui, [
+    ui.Text({ color: 'claude', bold: true, children: [v.section === 'handover' ? 'mixing in' : v.name] }),
     dim(ui, '· ' + clock(w.elapsed) + ' / ' + clock(w.total)),
-  ], { key: 'where', columnGap: 1 })
+    v.from ? dim(ui, '← from ' + v.from, { wrap: 'truncate-end' }) : null,
+  ], { key: 'where-text', columnGap: 1 })
+  return beside ? ui.Box({ key: 'where', flexDirection: 'row', columnGap: 2, alignItems: 'center', children: [sky, text] }) : col(ui, [sky, text], { key: 'where' })
 }
 
 function bottomLine(ui, vm, act) {

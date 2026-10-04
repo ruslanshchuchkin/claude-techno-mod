@@ -1,6 +1,6 @@
 {
   "name": "techno",
-  "version": "0.8.4",
+  "version": "0.8.5",
   "description": "A long techno set above your chat box: three drops, auto mixing into the next track, favorites, Mac media keys. Claude changes it from chat.",
   "author": { "name": "Ruslan Shchuchkin" }
 }

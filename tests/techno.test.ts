@@ -1,6 +1,7 @@
 import { expect, mock, test } from 'claude-code/testing'
 import { atPart, encodeCode, parseCode, toggleStep, trackFor, moodName, withVibe, activeLayers, transitionsOf, PLAN, HANDOVER, HANDOVER_LOOPS, HANDOVER_TO, BUILDS, FALLS } from '../hooks/engine.js'
 import { newSet, loopSpec, afterLoop, stepOn } from '../hooks/conductor.js'
+import { skyline } from '../hooks/views.js'
 
 // What Claude Code passes to the band's ui.render hook, apart from the app
 const PANE = {
@@ -31,7 +32,8 @@ function fakePlayer() {
     if (c.op === 'auto') p.auto = c.on
     if (c.op === 'next') stepOn(p.set, () => trackFor('ship it'))
     if (c.op === 'pick') { p.history.push(id(t)); p.set = newSet(atPart(parseCode(c.code) ?? trackFor(c.code), 0)); p.playing = true }
-    if (c.op === 'prev' && p.history.length) p.set = newSet(atPart(parseCode(p.history.pop())!, HANDOVER_TO))
+    if (c.op === 'prev' && p.history.length) p.set = newSet(atPart(parseCode(p.history.pop())!, 0))
+    if (c.op === 'skip') { p.history.push(id(t)); p.set = newSet(atPart(trackFor('ship it'), 0)) }
     if (c.op === 'jam' && c.mood) p.set.track = withVibe(t, c.mood)
     if (c.op === 'layer') p.set.track = { ...t, layers: { ...t.layers, [c.name]: !activeLayers(t)[c.name] } }
     if (c.op === 'step') p.set.track = toggleStep(t, c.layer, c.i)
@@ -126,6 +128,7 @@ test('the deck: play, the track and its mood, previous, favorite, auto; mood, ne
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   await ui.press({ key: 'skip' })
   expect(player.cmds.at(-1)).toMatchObject({ op: 'skip' })
+  expect(player.set.track.part).toBe(0)
   await ui.press({ key: 'auto' })
   expect(player.auto).toBe(false)
   await ui.press({ key: 'next' })
@@ -308,4 +311,15 @@ test('only auto plays the transitions; the drop after a build-up gets its boom, 
   afterLoop(h, { auto: true, nextTrack: () => next })
   expect(h.handover).toBe(null)
   expect(loopSpec(h, { auto: true })).toMatchObject({ impact: true, build: fx.swap })
+})
+
+test('the skyline fits the band: two cells a loop when there is room, never more cells than columns', () => {
+  const loops = PLAN.flatMap((p) => Array(p.loops).fill(p.energy))
+  for (const room of [11, 30, 41, 54, 200]) {
+    const { cells, at } = skyline(loops, loops.length / 2, room)
+    expect(cells.length).toBe(Math.max(11, Math.min(loops.length * 2, room)))
+    expect(at).toBe(Math.floor(cells.length / 2))
+    // the three drops stay apart once the band has 20 cells
+    if (room >= 20) expect(cells.join('').match(/█+/g)?.length).toBe(3)
+  }
 })

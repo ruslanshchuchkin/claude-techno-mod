@@ -51,7 +51,15 @@ Needs Claude Code v2.1.287 or later (built and checked on v2.1.288).
   (`▁` calm .. `█` drop), played cells in the text color, the cell that
   plays now in the accent (`claude` theme key), the rest dim, then the part
   name and `4:15 / 6:45`. `where` in the view model (register.js) holds the
-  shape, the cell and the times; `whereLine` in views.js draws it.
+  energy of every loop, the position in loops and the times; `skyline()` and
+  `whereLine` in views.js draw it. It never wraps (0.8.5, "doesn't work when
+  window is shorter"): it takes `viewport.columns - 4` cells at most (two a
+  loop when there is room), and the part and time move under it when they
+  do not fit beside it. In the desktop a block cell is one column wide.
+- **⏭, ⏮ and a pick start the song from its beginning** (0.8.5, "new track
+  didn't start from the beginning but from stage 3"), on the next bar. Only
+  the auto handover after an outro still brings the next song in at its
+  build (`HANDOVER_TO`).
 - **The bar uses the same transport** (`transport()` in views.js): ♪ ⏮ ■ ⏭,
   the track, ♡, mood and bpm, the part; auto, open and × stick to the right.
 - **Transitions, picked by the song** (0.8.4, Ruslan: "i love all 3! add

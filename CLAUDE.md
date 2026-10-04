@@ -17,6 +17,7 @@ Needs Claude Code v2.1.287 or later (built and checked on v2.1.288).
 | `.claude-plugin/plugin.json` | Plugin manifest. Name `techno`. |
 | `.claude-plugin/marketplace.json` | Local marketplace `techno-mod`, so the plugin installs as `techno@techno-mod`. |
 | `hooks/hooks.json` | Points to the hooks module. |
+| `hooks/package.json` | `"type": "module"`, so node 20 runs the player (it imports `engine.js`). |
 | `hooks/register.js` | The chat side: a remote control for the player. Starts the player when none (or an older one) answers, polls its state every second, `/techno` command, `jam` tool, save and share. Every `$` call lives here (the validator refuses `$` passed to imported files). |
 | `hooks/views.js` | The app's screens as pure functions of `(ui, vm, act)`: the deck (layout A), favorites (with the tracks heard before), new track, and the bar shown while the app is hidden. |
 | `hooks/grid.client.js` | A `Client` surface module: the step sequencer with its own playhead clock. Colors of empty cells and the playhead are theme keys (`subtle`, `text`), so it reads in light and dark. A click on a row name posts `{ toggle: layer }`; a click on a cell posts `{ step, layer }`. |
@@ -267,6 +268,13 @@ Do not change the meaning of an existing field: old codes must keep playing the 
   `~/Library/Application Support/techno/state.json`.
 - Chats still on 0.7 run their own ffplay player. The 0.8 player kills those
   at its start, but a 0.7 chat on auto starts them again: close old chats.
+- **`hooks/package.json` says `"type": "module"`.** Node 20 (the login
+  shell's `/usr/local/bin/node` here) does not read `engine.js` as a module
+  without it, and the player crashed at start on 0.8.0. The chat prefers
+  `/opt/homebrew/bin/node`. A crash at start lands in `daemon.out`.
+- **session.start registers `/techno` and `jam` first**, then brings the
+  player up in the background. On 0.8.0 it waited for the player first; when
+  the player crashed, a new chat had no `/techno` at all.
 - macOS gives the media keys to the app that played last: after Spotify or
   Music, press play in the pane once.
 - `$.fs.write` writes text only. `save()` pipes base64 through

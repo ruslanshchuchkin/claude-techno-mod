@@ -14,7 +14,7 @@ import { appView, miniView } from './views.js'
 const TOOL = 'mcp__techno__jam'
 // The plugin version: in the jam tool's answer, and the player of an older
 // version is replaced by this one. Keep it equal to plugin.json (a test checks).
-const VERSION = '0.8.1'
+const VERSION = '0.8.2'
 // [accent, normal] fill of a hit in the step grid
 const LAYER_COLORS = {
   kick: ['#e85a5a', '#c94040'],
@@ -73,7 +73,8 @@ async function ensurePlayer($) {
       const ps = await ask($).catch(() => null)
       if (ps && versionAtLeast(ps.version, VERSION)) { s.ps = ps; s.down = ''; return true }
       if (ps) { await ask($, { op: 'quit' }).catch(() => {}); await $.clock.sleep(400) }
-      const node = await $.process.run(['sh', '-lc', 'command -v node || ls /opt/homebrew/bin/node /usr/local/bin/node 2>/dev/null | head -1'], { timeoutMs: 10000 })
+      // Homebrew's node first, then the one the login shell finds (18 or later)
+      const node = await $.process.run(['sh', '-lc', 'for n in /opt/homebrew/bin/node "$(command -v node)" /usr/local/bin/node; do [ -x "$n" ] && echo "$n" && break; done'], { timeoutMs: 10000 })
       const bin = node.stdout.trim().split('\n')[0]
       if (!bin) { s.down = 'techno needs node (brew install node)'; return false }
       const log = s.home + '/Library/Caches/techno/daemon.out'
@@ -216,12 +217,6 @@ export function register(on) {
     s.home = (await $.env.get('HOME')) ?? ''
     s.sock = s.home + '/Library/Caches/techno/techno.sock'
     if ((await $.store.get('bar')) === true) s.used = true
-    await loadRepo($)
-    // the first chat on 0.8 hands the kept tracks and the last track to the player
-    const kept = await $.store.get('saved')
-    const track = await $.store.get('track')
-    if (await ensurePlayer($)) await cmd($, { op: 'hello', repo: s.repo, saved: Array.isArray(kept) ? kept : [], track: track && typeof track === 'object' ? encodeCode(cleanTrack(track)) : null })
-    if (!s.pollTimer) s.pollTimer = $.clock.every(1000, () => { poll($).catch(() => {}) })
     await $.tool.register({
       name: 'jam',
       description:
@@ -251,6 +246,17 @@ export function register(on) {
       },
     })
     await $.command.register({ name: 'techno', description: 'Show or hide the techno app', argumentHint: '[phrase or share code | stop | save | code]', immediate: true })
+    // The player may take a while (its first start compiles the helper app):
+    // the command and the tool are there at once, the player comes up behind.
+    void (async () => {
+      await loadRepo($)
+      // the first chat on 0.8 hands the kept tracks and the last track to the player
+      const kept = await $.store.get('saved')
+      const track = await $.store.get('track')
+      if (await ensurePlayer($)) await cmd($, { op: 'hello', repo: s.repo, saved: Array.isArray(kept) ? kept : [], track: track && typeof track === 'object' ? encodeCode(cleanTrack(track)) : null })
+      if (!s.pollTimer) s.pollTimer = $.clock.every(1000, () => { poll($).catch(() => {}) })
+      $.ui.invalidate('ui.render')
+    })().catch(() => {})
     return next(e)
   })
 

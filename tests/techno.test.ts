@@ -73,8 +73,10 @@ function stubs(on: any, store: Record<string, unknown> = {}, run?: (argv: string
 const start = ($: any) => $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work/my-app' })
 
 test('a new chat says hello to the player with the project names and the tracks kept before', async ($, on) => {
-  const { player } = stubs(on, { saved: [{ label: 'main', code: 'main@134m3e3d1-bass-hats' }], track: atPart(trackFor('ruslan'), 3) })
+  const { player, clock } = stubs(on, { saved: [{ label: 'main', code: 'main@134m3e3d1-bass-hats' }], track: atPart(trackFor('ruslan'), 3) })
   await start($)
+  // the hello goes out behind the session start, so the command is there at once
+  for (let i = 0; i < 20 && !player.cmds.some((c: any) => c.op === 'hello'); i++) await clock.advance(50)
   const hello = player.cmds.find((c: any) => c.op === 'hello')
   expect(hello.repo).toContain('my-app')
   expect(hello.repo).toContain('feature/login')
@@ -240,4 +242,25 @@ test('share codes: a<n> is the part, an old p<n> lands in the same section', () 
   const on = toggleStep(atPart(trackFor('ruslan'), 0), 'kick', 2)
   expect(encodeCode(on)).toContain('*kick0004')
   expect(encodeCode(toggleStep(on, 'kick', 2))).toBe(encodeCode(atPart(trackFor('ruslan'), 0)))
+})
+
+test('/techno and the jam tool exist even when the player cannot start', async ($, on) => {
+  mock.clock(on)
+  mock.store(on, {})
+  mock.env(on, { HOME: '/home/test' })
+  on('session.start', () => ({ cwd: '/work/my-app' }))
+  on('session.cwd', () => ({ value: '/work/my-app' }))
+  const registered: string[] = []
+  on('command.register', ($: any, e: any) => { registered.push('/' + e.name); return { value: undefined } })
+  on('tool.register', ($: any, e: any) => { registered.push(e.name); return { value: undefined } })
+  on('http.fetch', () => { throw new Error('no socket') })
+  on('process.run', () => ({ value: { exitCode: 0, stdout: '', stderr: '' } }))
+  on('ui.render', () => ({ type: 'Text', props: {}, children: ['drawn by Claude Code'] }))
+  await start($)
+  expect(registered).toContain('/techno')
+  expect(registered).toContain('jam')
+  await $.command.run({ command: 'techno', args: '' })
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect(await ui.find({ key: 'retry' })).toBeDefined()
+  await ui.unmount()
 })

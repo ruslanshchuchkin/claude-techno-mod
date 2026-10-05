@@ -5,8 +5,8 @@
 //
 // Layout A with the part bar (Ruslan, 2026-10-04): one line on top (previous,
 // play and next track side by side, the track, favorite, share, the volume;
-// auto and hide on the right), the part bar with the section, the grid, one
-// line under it (mood, tempo, next part, edit, favorites), and the edit card
+// auto and hide on the right), the part bar with the section, the mood and
+// the tempo, the grid, one line under it (mood, tempo, next part, edit, favorites), and the edit card
 // when edit is open.
 // Three screens: the deck, the favorites (with the tracks you heard), and new
 // tracks.
@@ -43,16 +43,16 @@ function transport(ui, vm, act, prefix) {
   ]
 }
 
-// The volume (Ruslan, 2026-10-05: "let's add + - and don't use emojis"):
-// `vol − ▂▃▄▆█ +`. − and + step it, the meter shows the level (lit up to it),
-// a click on `vol` mutes (it reads `muted`) and brings back the default.
-const METER = ['▂', '▃', '▄', '▆', '█']
+// The volume as one value (Ruslan, 2026-10-05, option B of digit, percent,
+// one bar: "let's keep volume as %"): `vol − 80% +`, 0 to 100 in steps of 20.
+// − and + step it; muted reads `off`; a click on `vol` mutes and brings back
+// the default.
 function volume(ui, vm, act, prefix) {
   const level = vm.volume ?? 4
   return ui.Box({ key: prefix + 'volume', flexDirection: 'row', flexShrink: 0, columnGap: 1, children: [
-    ui.Button({ key: prefix + 'vol-mute', label: level ? 'vol' : 'muted', plain: true, dimColor: true, onPress: () => act.volume(level ? 0 : 4) }),
+    ui.Button({ key: prefix + 'vol-mute', label: 'vol', plain: true, dimColor: true, onPress: () => act.volume(level ? 0 : 4) }),
     ui.Button({ key: prefix + 'vol-down', label: '−', plain: true, dimColor: !level, onPress: () => act.volume(Math.max(0, level - 1)) }),
-    ui.Box({ key: prefix + 'vol-meter', flexDirection: 'row', children: METER.map((bar, i) => ui.Text({ key: 'm' + i, dimColor: i + 1 > level, children: [bar] })) }),
+    ui.Text({ key: prefix + 'vol-value', bold: !!level, dimColor: !level, children: [level ? level * 20 + '%' : 'off'] }),
     ui.Button({ key: prefix + 'vol-up', label: '+', plain: true, dimColor: level === 5, onPress: () => act.volume(Math.min(5, level + 1)) }),
   ] })
 }
@@ -102,11 +102,20 @@ function whereLine(ui, vm) {
   ], { key: 'where', columnGap: 1 })
 }
 
-function bottomLine(ui, vm, act) {
-  return spread(ui, [
+// The mood and the tempo, under the song's progress and over the grid
+// (Ruslan, 2026-10-05: "progress of the song ... under it the mood, then
+// the grid").
+function moodLine(ui, vm, act) {
+  return row(ui, [
     dim(ui, 'mood'),
     ...['sad', 'mysterious', 'dark'].map((name) => toggle(ui, 'mood-' + name, name, vm.view.mood === name, () => act.mood(name))),
     dim(ui, vm.view.bpm + ' bpm', { key: 'bpm' }),
+  ], { key: 'mood' })
+}
+
+function bottomLine(ui, vm, act) {
+  return spread(ui, [
+    ui.Button({ key: 'new-song', label: '+ new song', onPress: () => act.screen('crate') }),
   ], [
     vm.auto ? null : ui.Button({ key: 'next', label: 'next part ›', onPress: () => act.next(), hotkey: 'n' }),
     toggle(ui, 'edit', 'edit', vm.editOpen, () => act.edit(), { hotkey: 'e' }),
@@ -219,6 +228,7 @@ function deck(ui, vm, act) {
   return [
     topLine(ui, vm, act),
     whereLine(ui, vm),
+    moodLine(ui, vm, act),
     vm.gridEl,
     bottomLine(ui, vm, act),
     vm.editOpen ? editCard(ui, vm, act) : null,
@@ -243,7 +253,7 @@ function favorites(ui, vm, act) {
   return [
     spread(ui, [ui.Text({ bold: true, children: ['♥ favorites'] }), dim(ui, vm.favorites.length + ' tracks')], [
       vm.favorites.length ? toggle(ui, 'play-all', vm.playlist === 'favorites' ? '● playing them in turn' : '▶ play them in turn', vm.playlist === 'favorites', () => act.playFavorites()) : null,
-      link(ui, 'to-crate', 'new track', () => act.screen('crate')),
+      link(ui, 'to-crate', 'new song', () => act.screen('crate')),
       link(ui, 'back', '‹ back', () => act.screen('deck')),
     ], 'fav-top'),
     vm.favorites.length ? null : dim(ui, 'Press ♡ while a track plays to keep it here.'),
@@ -256,7 +266,7 @@ function favorites(ui, vm, act) {
 function crate(ui, vm, act) {
   const names = (list, prefix) => list.map((p) => link(ui, prefix + p, p, () => act.pick(p)))
   return [
-    spread(ui, [ui.Text({ bold: true, children: ['new track'] }), dim(ui, 'every track grows from a name: its letters pick the key, the patterns and the riff')], [link(ui, 'back', '‹ back', () => act.screen('deck'))], 'crate-top'),
+    spread(ui, [ui.Text({ bold: true, children: ['new song'] }), dim(ui, 'every song grows from a name: its letters pick the key, the patterns and the riff')], [link(ui, 'back', '‹ back', () => act.screen('deck'))], 'crate-top'),
     vm.crate.repo.length ? row(ui, [dim(ui, 'this project'), ...names(vm.crate.repo, 'r-')], { key: 'repo', columnGap: 2 }) : null,
     row(ui, [dim(ui, 'starters'), ...names(vm.crate.starters, 's-')], { key: 'starters', columnGap: 2 }),
     ui.Input({ key: 'phrase', label: 'or type any phrase', placeholder: 'late night deploy', value: '', submitLabel: 'play', onSubmit: (v) => act.phrase(v) }),
@@ -278,14 +288,14 @@ export function appView(ui, vm, act) {
 }
 
 // The bar above the chat box while the app is hidden: the same transport as
-// the deck, the part, then auto, open and × on the right.
+// the deck (no section word: "i don't want to see these intro drop 1 at all
+// here"), then auto, open and × on the right.
 export function miniView(ui, vm, act) {
   if (!vm.view) return spread(ui, [ui.Text({ bold: true, children: ['♪'] }), dim(ui, vm.down || 'starting the player…')], [link(ui, 'mini-close', '×', () => act.closeBar())], 'mini')
   const v = vm.view
   return spread(ui, [
     ui.Text({ bold: true, children: ['♪'] }),
     ...transport(ui, vm, act, 'mini-'),
-    ui.Text({ color: 'claude', children: [sectionLabel(v)] }),
   ], [
     toggle(ui, 'mini-auto', vm.auto ? '● auto' : '○ auto', vm.auto, () => act.auto()),
     link(ui, 'mini-open', 'open', () => act.open()),

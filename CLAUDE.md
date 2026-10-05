@@ -58,6 +58,26 @@ node 20 or later. Public at https://github.com/ruslanshchuchkin/claude-techno-mo
   that line from `daemon.out` and shows it in the band. `git clone` sets no
   quarantine flag, so Gatekeeper lets the binary run. Option C waits until
   people ask for it.
+- **0.9.8 layout** (Ruslan: "progress of the song, then intro, under it the
+  mood, then the grid"; "new should be new song"; "i don't want to see these
+  intro drop 1 at all here" about the bar). The deck, top to bottom: the
+  transport and the volume; the part bar with the section; `moodLine()` (mood
+  buttons and the bpm); the grid; `+ new song` (opens the new song screen,
+  `crate`) on the left, next part, edit, favorites on the right. The bar
+  (`miniView`) has no section word. "new track" is "new song" everywhere.
+- **0.9.8 volume as a percent** (picked B of digit / percent / one bar):
+  `vol − 80% +`, 0..100 in steps of 20 (the level 0..5 times 20), `off` when
+  muted; a click on `vol` mutes and brings back 80%.
+- **0.9.8 efficiency, measured** (Ruslan: "how much CPU ... ULTRA
+  efficient? maybe rust?"). 60 s of silent play, CPU time of one core: the
+  node player about 1.7% (the synth renders a 15 s loop in about 0.3 s);
+  the helper was 8.6%, almost all in the system audio thread waking for
+  512-frame buffers plus the 44.1 to 48 kHz conversion. The helper now asks
+  for a 4096-frame IO buffer (this process only) and drains its events at
+  20 Hz, not 50: 1.9%. No starve. Rust would only speed up the 1.7%. The
+  chat side (the grid playhead redraw, one state poll a second per chat) is
+  not measured yet. Measure: `ps -o time=` of the player and the helper
+  before and after 60 s, with `TECHNO_DIR=/tmp/tt-cpu TECHNO_GAIN=0`.
 - **0.9.7: the volume is `vol − ▂▃▄▆█ +`** (Ruslan: "i don't like volume,
   let's add + - and don't use emojis"). − and + step the level, the meter
   only shows it, a click on `vol` mutes (it reads `muted`) and brings back

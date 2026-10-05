@@ -149,7 +149,7 @@ test('the deck: play, the track and its mood, previous, favorite, auto; mood, ne
   await ui.unmount()
 })
 
-test('the volume: vol, − and +, and a five-bar meter, no emoji, beside the track; the tempo under the grid, Claude can turn it down', async ($, on) => {
+test('the volume: vol − 80% +, beside the track; + new song; the tempo under the grid, Claude can turn it down', async ($, on) => {
   const { player } = stubs(on)
   await start($)
   await $.command.run({ command: 'techno', args: '' })
@@ -157,24 +157,27 @@ test('the volume: vol, − and +, and a five-bar meter, no emoji, beside the tra
   // the mood and the tempo left the top line: the tempo sits in the bottom line
   expect((await ui.find({ text: /^\d{3} bpm$/ }))?.text).toMatch(/^\d{3} bpm$/)
   expect(await ui.find({ text: /· dark · \d{3} bpm/ })).toBeUndefined()
-  // no emoji: the word, − and +, and the meter
-  expect((await ui.find({ key: 'vol-mute' }))?.props.label).toBe('vol')
-  expect(await ui.find({ text: /▂▃▄▆█/ })).toBeDefined()
+  // one value in percent, − and + step it, vol mutes; no emoji
+  expect((await ui.find({ text: /^80%$/ }))?.text).toBe('80%')
   await ui.press({ key: 'vol-down' })
   await ui.press({ key: 'vol-down' })
   expect(player.volume).toBe(2)
+  expect(await ui.find({ text: /^40%$/ })).toBeDefined()
   await ui.press({ key: 'vol-up' })
   expect(player.volume).toBe(3)
-  // vol mutes, and brings back the default
   await ui.press({ key: 'vol-mute' })
   expect(player.volume).toBe(0)
-  expect((await ui.find({ key: 'vol-mute' }))?.props.label).toBe('muted')
+  expect(await ui.find({ text: /^off$/ })).toBeDefined()
   await ui.press({ key: 'vol-down' })
   expect(player.volume).toBe(0)
   await ui.press({ key: 'vol-mute' })
   expect(player.volume).toBe(4)
   for (let i = 0; i < 3; i++) await ui.press({ key: 'vol-up' })
   expect(player.volume).toBe(5)
+  expect(await ui.find({ text: /^100%$/ })).toBeDefined()
+  // + new song opens the new song screen
+  await ui.press({ key: 'new-song' })
+  expect(await ui.find({ key: 'phrase' })).toBeDefined()
   await ui.unmount()
   const r = await $.tool.call({ tool: 'mcp__techno__jam', volume: 3 })
   expect(player.volume).toBe(3)
@@ -246,7 +249,9 @@ test('hidden, the app is a one-line bar with previous, play, next track, favorit
   await $.command.run({ command: 'techno', args: 'ship it' })
   await $.command.run({ command: 'techno', args: '' })
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  for (const key of ['mini-play', 'mini-prev', 'mini-skip', 'mini-fav', 'mini-auto', 'mini-open']) expect(await ui.find({ key })).toBeDefined()
+  for (const key of ['mini-play', 'mini-prev', 'mini-skip', 'mini-fav', 'mini-share', 'mini-vol-up', 'mini-auto', 'mini-open']) expect(await ui.find({ key })).toBeDefined()
+  // no section word in the bar
+  expect(await ui.find({ text: /^(intro|groove|build|drop \d|break|outro)$/ })).toBeUndefined()
   await ui.press({ key: 'mini-prev' })
   expect(player.set.track.phrase).toBe('ruslan')
   await ui.press({ key: 'mini-close' })

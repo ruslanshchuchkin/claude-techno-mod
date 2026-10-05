@@ -82,6 +82,13 @@ final class Player {
     }
     engine.attach(source)
     engine.connect(source, to: engine.mainMixerNode, format: format)
+    // A big IO buffer (about 93 ms): the audio thread wakes about 8 times less
+    // often than with the default 512 frames. The player queues whole bars
+    // ahead, so the extra latency is never heard. This process only.
+    if let unit = engine.outputNode.audioUnit {
+      var frames: UInt32 = 4096
+      AudioUnitSetProperty(unit, kAudioDevicePropertyBufferFrameSize, kAudioUnitScope_Global, 0, &frames, UInt32(MemoryLayout<UInt32>.size))
+    }
   }
 
   func queueFile(id: Int, path: String) {
@@ -174,6 +181,6 @@ Thread.detachNewThread {
   DispatchQueue.main.async { exit(0) }
 }
 
-Timer.scheduledTimer(withTimeInterval: 0.02, repeats: true) { _ in player.drain() }
+Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { _ in player.drain() }
 emit("{\"ev\":\"ready\"}")
 app.run()

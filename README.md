@@ -57,11 +57,12 @@ The band in the video above, part by part:
 | On the deck | What it does |
 |---|---|
 | **♡ / ↗** | Keep the track in favorites / copy its share line |
-| **vol − ▂▃▄▆█ +** | The volume. − and + step it, `vol` mutes. Or ask Claude: *"quieter"* |
+| **vol − 80% +** | The volume, in steps of 20%. `vol` mutes. Or ask Claude: *"quieter"* |
 | **▰▰▱▱ drop 1** | The whole song, one block per 15 seconds, and where you are: intro, groove, build, drop, break, outro |
 | **the grid** | The loop that plays now. Click a cell to add a hit, click a name to mute it |
 | **auto** | On: it plays the whole set and moves on by itself. Off: it stays on one part |
 | **mood** | **sad**, **mysterious** or **dark**: the scale, the tempo and the energy in one click. The bpm sits beside it |
+| **+ new song** | Grow a new song: pick a name from your project, a starter, or type any phrase |
 | **edit** | The studio: instruments, patterns, notes, grit, filters, tempo, and the song's parts |
 | <kbd>⏯</kbd> <kbd>⏭</kbd> <kbd>⏮</kbd> | The Mac media keys work too, and the track shows in Control Center |
 

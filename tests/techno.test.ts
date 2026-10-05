@@ -119,7 +119,7 @@ test('the deck: play, the track and its mood, previous, favorite, auto; mood, ne
   await $.command.run({ command: 'techno', args: '' })
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ ...PANE, surface })
-    for (const key of ['play', 'skip', 'fav', 'share', 'vol-mute', 'vol-1', 'vol-5', 'auto', 'where', 'grid', 'mood-sad', 'mood-mysterious', 'mood-dark', 'edit', 'favorites']) expect(await ui.find({ key })).toBeDefined()
+    for (const key of ['play', 'skip', 'fav', 'share', 'vol-mute', 'vol-down', 'vol-up', 'auto', 'where', 'grid', 'mood-sad', 'mood-mysterious', 'mood-dark', 'edit', 'favorites']) expect(await ui.find({ key })).toBeDefined()
     // auto is on: the set moves by itself, so there is no next part button
     expect(await ui.find({ key: 'next' })).toBeUndefined()
     expect((await ui.find({ key: 'auto' }))?.props.variant).toBe('primary')
@@ -149,7 +149,7 @@ test('the deck: play, the track and its mood, previous, favorite, auto; mood, ne
   await ui.unmount()
 })
 
-test('the volume: a five-bar meter and the speaker beside the track, the tempo under the grid, Claude can turn it down', async ($, on) => {
+test('the volume: vol, − and +, and a five-bar meter, no emoji, beside the track; the tempo under the grid, Claude can turn it down', async ($, on) => {
   const { player } = stubs(on)
   await start($)
   await $.command.run({ command: 'techno', args: '' })
@@ -157,21 +157,24 @@ test('the volume: a five-bar meter and the speaker beside the track, the tempo u
   // the mood and the tempo left the top line: the tempo sits in the bottom line
   expect((await ui.find({ text: /^\d{3} bpm$/ }))?.text).toMatch(/^\d{3} bpm$/)
   expect(await ui.find({ text: /· dark · \d{3} bpm/ })).toBeUndefined()
-  expect((await ui.find({ key: 'vol-4' }))?.props.dimColor).toBeFalsy()
-  expect((await ui.find({ key: 'vol-5' }))?.props.dimColor).toBe(true)
-  expect((await ui.find({ key: 'vol-5' }))?.props.label).toBe('█')
-  await ui.press({ key: 'vol-2' })
+  // no emoji: the word, − and +, and the meter
+  expect((await ui.find({ key: 'vol-mute' }))?.props.label).toBe('vol')
+  expect(await ui.find({ text: /▂▃▄▆█/ })).toBeDefined()
+  await ui.press({ key: 'vol-down' })
+  await ui.press({ key: 'vol-down' })
   expect(player.volume).toBe(2)
-  expect((await ui.find({ key: 'vol-3' }))?.props.dimColor).toBe(true)
-  // the speaker mutes, and brings back the default
+  await ui.press({ key: 'vol-up' })
+  expect(player.volume).toBe(3)
+  // vol mutes, and brings back the default
   await ui.press({ key: 'vol-mute' })
+  expect(player.volume).toBe(0)
+  expect((await ui.find({ key: 'vol-mute' }))?.props.label).toBe('muted')
+  await ui.press({ key: 'vol-down' })
   expect(player.volume).toBe(0)
   await ui.press({ key: 'vol-mute' })
   expect(player.volume).toBe(4)
-  // a click on the only lit block mutes
-  await ui.press({ key: 'vol-1' })
-  await ui.press({ key: 'vol-1' })
-  expect(player.volume).toBe(0)
+  for (let i = 0; i < 3; i++) await ui.press({ key: 'vol-up' })
+  expect(player.volume).toBe(5)
   await ui.unmount()
   const r = await $.tool.call({ tool: 'mcp__techno__jam', volume: 3 })
   expect(player.volume).toBe(3)

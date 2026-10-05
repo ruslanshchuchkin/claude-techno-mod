@@ -72,9 +72,10 @@ def frame(t):
     c = skip_icon(dr, c, 0, False)
     c = text(dr, c + 2, 0, 'late night deploy', TEXT, FB)
     c = text(dr, c + 1, 0, '♡ ↗', TEXT)
-    c = speaker(dr, c + 2, 0)
-    for n, ch in enumerate('▂▃▄▆█'):  # the volume meter, four bars lit
-        text(dr, c + 1 + n, 0, ch, TEXT if n < 4 else FAINT, F)
+    c = text(dr, c + 2, 0, 'vol', DIM)  # the volume: vol − ▂▃▄▆█ +, four bars lit
+    c = text(dr, c + 1, 0, '−', TEXT) + 1
+    for n, ch in enumerate('▂▃▄▆█'): text(dr, c + n, 0, ch, TEXT if n < 4 else FAINT, F)
+    text(dr, c + 6, 0, '+', TEXT)
     right = int((W - 2 * X0 - 48) // CW)
     button(dr, right - 14, 0, '● auto', True)
     text(dr, right - 4, 0, 'hide', DIM)

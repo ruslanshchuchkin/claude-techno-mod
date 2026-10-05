@@ -58,6 +58,10 @@ node 20 or later. Public at https://github.com/ruslanshchuchkin/claude-techno-mo
   that line from `daemon.out` and shows it in the band. `git clone` sets no
   quarantine flag, so Gatekeeper lets the binary run. Option C waits until
   people ask for it.
+- **0.9.7: the volume is `vol − ▂▃▄▆█ +`** (Ruslan: "i don't like volume,
+  let's add + - and don't use emojis"). − and + step the level, the meter
+  only shows it, a click on `vol` mutes (it reads `muted`) and brings back
+  4. No emoji in the deck: ♡ ♥ ↗ ♪ ⚄ ★ ✓ are text symbols and stay.
 - **0.9.6: the volume is a meter, the bar names the section** (Ruslan: "i
   don't like how volume looks like", "kick - it's not clear what it means";
   picked A of meter / slider / number, and A of section names / plus a
@@ -103,7 +107,7 @@ node 20 or later. Public at https://github.com/ruslanshchuchkin/claude-techno-mo
   `screencapture` gives a black image (no Screen Recording permission), so
   `scripts/readme-media/deck-video.py` draws the deck from the engine's grid
   per bar, in sync with the audio: the riser, then drop 1 at 0:05. The README
-  top is that video only (now `c764fccd-...`, the 0.9.6 layout); Ruslan: "just keep the video, it already shows the first frame",
+  top is that video only (now `6ed4eca8-...`, the 0.9.7 layout); Ruslan: "just keep the video, it already shows the first frame",
   so no GIF. Rebuild and upload it again after a deck change:
   `scripts/readme-media/README.md`.
 - **The README demo**: the waveform mp4 plays inline (uploaded 2026-10-05 as

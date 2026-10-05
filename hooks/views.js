@@ -43,16 +43,17 @@ function transport(ui, vm, act, prefix) {
   ]
 }
 
-// The volume, a meter (Ruslan, 2026-10-05, option A of meter, slider,
-// number): the speaker mutes and brings it back, then five rising bars, lit
-// up to the level. A click sets the level, a click on the only lit bar mutes.
+// The volume (Ruslan, 2026-10-05: "let's add + - and don't use emojis"):
+// `vol − ▂▃▄▆█ +`. − and + step it, the meter shows the level (lit up to it),
+// a click on `vol` mutes (it reads `muted`) and brings back the default.
 const METER = ['▂', '▃', '▄', '▆', '█']
 function volume(ui, vm, act, prefix) {
   const level = vm.volume ?? 4
-  return ui.Box({ key: prefix + 'volume', flexDirection: 'row', flexShrink: 0, children: [
-    ui.Button({ key: prefix + 'vol-mute', label: level ? '🔉' : '🔇', plain: true, dimColor: !level, onPress: () => act.volume(level ? 0 : 4) }),
-    ui.Text({ children: [' '] }),
-    ...METER.map((bar, i) => ui.Button({ key: prefix + 'vol-' + (i + 1), label: bar, plain: true, dimColor: i + 1 > level, onPress: () => act.volume(i + 1 === level && level === 1 ? 0 : i + 1) })),
+  return ui.Box({ key: prefix + 'volume', flexDirection: 'row', flexShrink: 0, columnGap: 1, children: [
+    ui.Button({ key: prefix + 'vol-mute', label: level ? 'vol' : 'muted', plain: true, dimColor: true, onPress: () => act.volume(level ? 0 : 4) }),
+    ui.Button({ key: prefix + 'vol-down', label: '−', plain: true, dimColor: !level, onPress: () => act.volume(Math.max(0, level - 1)) }),
+    ui.Box({ key: prefix + 'vol-meter', flexDirection: 'row', children: METER.map((bar, i) => ui.Text({ key: 'm' + i, dimColor: i + 1 > level, children: [bar] })) }),
+    ui.Button({ key: prefix + 'vol-up', label: '+', plain: true, dimColor: level === 5, onPress: () => act.volume(Math.min(5, level + 1)) }),
   ] })
 }
 

@@ -66,8 +66,7 @@ Press play. 🔊
 
 The band at the top of this page, part by part:
 
-
-| | |
+| On the deck | What it does |
 |---|---|
 | **♡ / ↗** | Keep the track in favorites / copy its share line |
 | **▰▰▱▱** | The whole song, one block per 15 seconds |
@@ -110,7 +109,7 @@ A friend pastes it into their chat and hears the same track, because the code *i
 
 Every sound is math in plain JavaScript ([`hooks/engine.js`](hooks/engine.js)). Nothing is sampled or downloaded.
 
-| | |
+| Sound | How it's made |
 |---|---|
 | **kick** | A sine wave that falls in pitch, with a click on top |
 | **bass** | A sine sub under two detuned saws, through a filter |

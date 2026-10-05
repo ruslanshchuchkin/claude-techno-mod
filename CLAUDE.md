@@ -81,7 +81,10 @@ node 20 or later. Public at https://github.com/ruslanshchuchkin/claude-techno-mo
 - **The web page with a player is parked** ("for now let's focus not on web
   page but on packaging"). A proof in `web/` (not committed) plays the same
   engine and conductor in a browser worker; a loop renders in 0.2 to 0.5 s.
-- **The README demo**: the mp3 link now, through jsDelivr (GitHub sends a raw mp3 as a download; jsDelivr sends `audio/mpeg`, so it plays in the tab). A 1280x720 mp4 with a waveform
+- **The README demo**: the waveform mp4 plays inline (uploaded 2026-10-05 as
+  `user-attachments/assets/187aec4d-...`: a file dropped into a new issue box
+  in Ruslan's Chrome, the draft cleared, nothing posted); the mp3 link stays
+  under it, through jsDelivr (GitHub sends a raw mp3 as a download; jsDelivr sends `audio/mpeg`, so it plays in the tab). A 1280x720 mp4 with a waveform
   (about 5 MB) waits for Ruslan to drag it into the README on github.com,
   the only way GitHub plays a video inline. A screen recording of the deck
   would be better; the session cannot capture the screen.

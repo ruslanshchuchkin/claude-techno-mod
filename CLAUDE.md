@@ -440,8 +440,16 @@ Do not change the meaning of an existing field: old codes must keep playing the 
   use `/tmp/<short>` for `TECHNO_DIR`, never the scratchpad.
 - `TECHNO_DIR` moves the helper app too (`$TECHNO_DIR/TechnoPlayer.app`), so a
   test player never replaces the real helper.
-- **Installed as `techno@techno-mod`** (user scope, local directory
-  marketplace). The desktop Code tab ignores `CLAUDE_CODE_PLUGIN_DIRS` from
+- **Ruslan's install follows GitHub since 2026-10-05** (`claude plugin
+  marketplace list` shows `Source: GitHub`): a change reaches it only after a
+  push, then `claude plugin marketplace update techno-mod && claude plugin
+  update techno@techno-mod`. Back to the local folder: `marketplace remove
+  techno-mod`, `marketplace add ~/Documents/techno-mod`, install again.
+  `plugin install` with no `techno-mod` marketplace says "not found in
+  marketplace" (misleading): the marketplace is missing, add it first.
+  Without a GitHub SSH key the add falls back to HTTPS (tested).
+- **Installed as `techno@techno-mod`** (user scope; was a local directory
+  marketplace until 2026-10-05). The desktop Code tab ignores `CLAUDE_CODE_PLUGIN_DIRS` from
   settings, so that env was removed again on 2026-10-03. An installed plugin
   is cached by version: after a change, bump `version` in plugin.json, run
   `claude plugin marketplace update techno-mod && claude plugin update techno@techno-mod`,

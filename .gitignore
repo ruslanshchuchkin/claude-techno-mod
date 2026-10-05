@@ -3,3 +3,4 @@ tsconfig.json
 previews/
 *.wav
 .DS_Store
+.claude/

@@ -14,7 +14,7 @@ import { appView, miniView } from './views.js'
 const TOOL = 'mcp__techno__jam'
 // The plugin version: in the jam tool's answer, and the player of an older
 // version is replaced by this one. Keep it equal to plugin.json (a test checks).
-const VERSION = '0.9.2'
+const VERSION = '0.9.3'
 // [accent, normal] fill of a hit in the step grid
 const LAYER_COLORS = {
   kick: ['#e85a5a', '#c94040'],
@@ -79,14 +79,18 @@ async function ensurePlayer($) {
       const bin = node.stdout.trim().split('\n')[0]
       if (!bin) { s.down = 'techno needs node (brew install node)'; return false }
       const log = s.home + '/Library/Caches/techno/daemon.out'
+      // what the player says from here on: a line starting "techno: " is why it quit
+      const from = Number((await $.process.run(['sh', '-c', 'wc -c < "$1" 2>/dev/null || echo 0', 'sh', log], { timeoutMs: 5000 })).stdout.trim()) || 0
+      const said = async () => (await $.process.run(['sh', '-c', 'tail -c +"$2" "$1" 2>/dev/null | grep "^techno: " | tail -n 1', 'sh', log, String(from + 1)], { timeoutMs: 5000 })).stdout.trim().replace(/^techno: /, '')
       await $.process.run(['sh', '-c', 'mkdir -p "$(dirname "$3")"; perl -MPOSIX -e "POSIX::setsid(); exec @ARGV" "$1" "$2" </dev/null >>"$3" 2>&1 &', 'sh', bin, $.plugin.root + '/player/techno.mjs', log], { timeoutMs: 10000 })
       // the first start compiles TechnoPlayer.app (swiftc), which takes a while
       for (let i = 0; i < 120; i++) {
         await $.clock.sleep(500)
         const up = await ask($).catch(() => null)
         if (up) { s.ps = up; s.down = ''; return true }
+        if (i % 4 === 3) { const why = await said(); if (why) { s.down = why; return false } }
       }
-      s.down = 'the player did not start: see ~/Library/Caches/techno/daemon.out'
+      s.down = (await said()) || 'the player did not start: see ~/Library/Caches/techno/daemon.out'
       return false
     } finally {
       s.starting = null

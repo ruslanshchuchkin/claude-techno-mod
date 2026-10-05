@@ -30,9 +30,10 @@ const SOCK = path.join(CACHE, 'techno.sock')
 const BARS = path.join(CACHE, 'bars')
 const LOG = path.join(CACHE, 'player.log')
 const STATE_FILE = process.env.TECHNO_DIR ? path.join(process.env.TECHNO_DIR, 'state.json') : path.join(HOME, 'Library/Application Support/techno/state.json')
-const APP = path.join(HOME, 'Library/Caches/techno/TechnoPlayer.app')
+const APP = process.env.TECHNO_DIR ? path.join(process.env.TECHNO_DIR, 'TechnoPlayer.app') : path.join(HOME, 'Library/Caches/techno/TechnoPlayer.app')
 const BIN = path.join(APP, 'Contents/MacOS/TechnoPlayer')
 const SOURCE = path.join(HERE, 'TechnoPlayer.swift')
+const PREBUILT = path.join(HERE, 'bin/TechnoPlayer')
 const STARTERS = ['late night deploy', 'coffee at 3am', 'merge conflict', 'friday deploy', 'null pointer', 'ship it', 'warehouse 4am', 'rooftop sunrise']
 // how many bars wait in the helper's queue beyond the one playing
 const AHEAD = 2
@@ -91,7 +92,22 @@ function buildHelper() {
 <key>LSUIElement</key><true/>
 </dict></plist>
 `)
-  execFileSync('swiftc', ['-O', SOURCE, '-o', BIN], { stdio: 'pipe', timeout: 180000 })
+  // the repo ships a universal build of this source (scripts/build-helper.mjs),
+  // so only a changed source needs swiftc
+  if (fs.existsSync(PREBUILT) && fs.readFileSync(PREBUILT + '.sha1', 'utf8').trim() === sum) {
+    // a new file renamed over the old one: a helper still running keeps its own
+    fs.copyFileSync(PREBUILT, BIN + '.new')
+    fs.chmodSync(BIN + '.new', 0o755)
+    fs.renameSync(BIN + '.new', BIN)
+  } else {
+    try {
+      execFileSync('swiftc', ['-O', SOURCE, '-o', BIN], { stdio: 'pipe', timeout: 180000 })
+    } catch (err) {
+      log('swiftc failed: ' + String(err.stderr || err.message).trim().split('\n')[0])
+      console.error('techno: the helper app needs a build: run xcode-select --install')
+      process.exit(1)
+    }
+  }
   fs.writeFileSync(stampFile, sum)
 }
 

@@ -8,7 +8,10 @@ is a remote control, and so are the Mac's play, next and previous keys. You
 keep tracks you love in favorites, and Claude changes the music from chat with
 the `jam` tool.
 
-Needs Claude Code v2.1.287 or later (built and checked on v2.1.288).
+Needs Claude Code v2.1.286 or later (plays in the desktop Code tab on
+2.1.286, built and checked in the CLI on v2.1.288), macOS 12 or later, and
+node 20 or later. Public at https://github.com/ruslanshchuchkin/claude-techno-mod
+(MIT); `README.md` is the front page for strangers.
 
 ## Files
 
@@ -30,8 +33,37 @@ Needs Claude Code v2.1.287 or later (built and checked on v2.1.288).
 | `scripts/buildups.mjs` | Render the build into drop 1 once per build-up pack (`0-now`, `1-riser`, `2-filter`, `3-echo`) to compare them: `node scripts/buildups.mjs "late night deploy" previews/buildups`. |
 | `scripts/smoke.mjs` | Fast node checks: version match, every part renders, the handover renders, every build, fall and the swell render. |
 | `tests/techno.test.ts` | Real tests for `claude plugin test`, against a fake player on the socket. |
+| `player/bin/TechnoPlayer` | The prebuilt helper: one universal binary (arm64 and x86_64, ad-hoc signed), so a new user needs no Xcode tools. `TechnoPlayer.sha1` beside it is the sha1 of the Swift source it came from. |
+| `scripts/build-helper.mjs` | Builds `player/bin/` from `TechnoPlayer.swift`. Run it after every change to the Swift file; smoke fails until you do. |
+| `README.md`, `LICENSE` | The public front page (its own voice, not STE) and the MIT license. |
+| `media/late-night-deploy-drop-1.mp3` | The 29 s demo the README links: the riser into drop 1 of `late-night-deploy@133m0e2k2`. |
 
 ## Decisions
+
+### 0.9.3 packaging (Ruslan, 2026-10-05)
+
+- **Public repo, plugin marketplace install, option B** (picked from A as
+  it is, B prebuilt helper, C no node: the Swift helper runs the engine in
+  JavaScriptCore). The repo is `ruslanshchuchkin/claude-techno-mod`; the
+  marketplace inside it keeps the name `techno-mod`, so the install id stays
+  `techno@techno-mod` for everyone, Ruslan's local install too. Install:
+  `/plugin marketplace add ruslanshchuchkin/claude-techno-mod`, then
+  `/plugin install techno@techno-mod`, then a new chat.
+- **The helper ships prebuilt.** `buildHelper()` in the player copies
+  `player/bin/TechnoPlayer` into `TechnoPlayer.app` when its sha1 matches the
+  Swift source (a new file renamed over the old, so a running helper keeps
+  its own). Only a changed source calls `swiftc`. Without `swiftc` the player
+  prints `techno: ... run xcode-select --install` and exits; the chat reads
+  that line from `daemon.out` and shows it in the band. `git clone` sets no
+  quarantine flag, so Gatekeeper lets the binary run. Option C waits until
+  people ask for it.
+- **The web page with a player is parked** ("for now let's focus not on web
+  page but on packaging"). A proof in `web/` (not committed) plays the same
+  engine and conductor in a browser worker; a loop renders in 0.2 to 0.5 s.
+- **The README demo**: the mp3 link now. A 1280x720 mp4 with a waveform
+  (about 5 MB) waits for Ruslan to drag it into the README on github.com,
+  the only way GitHub plays a video inline. A screen recording of the deck
+  would be better; the session cannot capture the screen.
 
 ### 0.9 (Ruslan, 2026-10-04), these win over older notes below
 
@@ -346,7 +378,8 @@ Do not change the meaning of an existing field: old codes must keep playing the 
 
 ## Checks
 
-- `node scripts/smoke.mjs`: version, every part and the handover render.
+- `node scripts/smoke.mjs`: version, every part and the handover render, the
+  prebuilt helper matches the Swift source.
 - Listen to a whole set: `node scripts/set.mjs "ship it" "warehouse 4am" /tmp/set.wav`.
 - Run the player without sound and away from the real state:
   `TECHNO_DIR=/tmp/tt TECHNO_GAIN=0 node player/techno.mjs`. Stop it by its
@@ -358,6 +391,13 @@ Do not change the meaning of an existing field: old codes must keep playing the 
 
 ## Gotchas
 
+- **Test a new user without touching the real install**: a clean config
+  folder, `CLAUDE_CONFIG_DIR=/tmp/cc-new claude plugin marketplace add
+  ruslanshchuchkin/claude-techno-mod`, then `... plugin install
+  techno@techno-mod`. A unix socket path must stay under 104 characters:
+  use `/tmp/<short>` for `TECHNO_DIR`, never the scratchpad.
+- `TECHNO_DIR` moves the helper app too (`$TECHNO_DIR/TechnoPlayer.app`), so a
+  test player never replaces the real helper.
 - **Installed as `techno@techno-mod`** (user scope, local directory
   marketplace). The desktop Code tab ignores `CLAUDE_CODE_PLUGIN_DIRS` from
   settings, so that env was removed again on 2026-10-03. An installed plugin

@@ -1,7 +1,9 @@
 // Fast checks in node, without a session: the version matches plugin.json,
-// every part of the plan renders, the handover renders, and a render is fast.
+// every part of the plan renders, the handover renders, a render is fast, and
+// the prebuilt helper (player/bin) was built from the Swift source as it is.
 // `claude plugin test` is the real test of the mod.
 import { readFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
 import { trackFor, atPart, renderLoop, arrange, withVibe, PLAN, HANDOVERS, VIBES, BUILDS, FALLS, INSTRUMENTS, TONE_LAYERS, editTrack } from '../hooks/engine.js'
 import { newSet, loopSpec, afterLoop } from '../hooks/conductor.js'
 
@@ -9,6 +11,9 @@ const fail = (msg) => { console.error('FAIL', msg); process.exitCode = 1 }
 const plugin = JSON.parse(readFileSync(new URL('../.claude-plugin/plugin.json', import.meta.url), 'utf8')).version
 const mod = readFileSync(new URL('../hooks/register.js', import.meta.url), 'utf8').match(/const VERSION = '([^']+)'/)[1]
 if (plugin !== mod) fail(`VERSION ${mod} in register.js, ${plugin} in plugin.json`)
+const swift = createHash('sha1').update(readFileSync(new URL('../player/TechnoPlayer.swift', import.meta.url))).digest('hex')
+const built = readFileSync(new URL('../player/bin/TechnoPlayer.sha1', import.meta.url), 'utf8').trim()
+if (swift !== built) fail('player/bin/TechnoPlayer is older than TechnoPlayer.swift: run node scripts/build-helper.mjs')
 
 const t = trackFor('smoke test')
 for (let p = 0; p < PLAN.length; p++) {

@@ -57,6 +57,14 @@ node 20 or later. Public at https://github.com/ruslanshchuchkin/claude-techno-mo
   that line from `daemon.out` and shows it in the band. `git clone` sets no
   quarantine flag, so Gatekeeper lets the binary run. Option C waits until
   people ask for it.
+- **The master, measured** (2026-10-05, Ruslan: "does auto apply mastering
+  as well? ... not disturbing"). A whole auto set as the helper plays it
+  (gain 0.7): -14.4 LUFS integrated, LRA 2.8 LU, true peak -2.9 dBFS,
+  crest about 10.7 dB; the 2.5 kHz band sits 21 dB under the sub. No change
+  needed; the README says it. Measure again with `ffmpeg -i set.wav -af
+  "volume=0.7,ebur128=peak=true" -f null -` after a change to the master.
+- **README voice**: its own voice (playful, not STE), a stars badge, one star
+  line under the pitch and one in the footer.
 - **The web page with a player is parked** ("for now let's focus not on web
   page but on packaging"). A proof in `web/` (not committed) plays the same
   engine and conductor in a browser worker; a loop renders in 0.2 to 0.5 s.

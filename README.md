@@ -2,7 +2,7 @@
 
 **Type a phrase. Get a seven-minute techno set. Keep coding.**
 
-### ▶ [Hear it: 30 seconds, the riser into drop 1](media/late-night-deploy-drop-1.mp3)
+### ▶ [Hear it: 30 seconds, the riser into drop 1](https://cdn.jsdelivr.net/gh/ruslanshchuchkin/claude-techno-mod@main/media/late-night-deploy-drop-1.mp3)
 
 A [Claude Code](https://claude.com/claude-code) mod that grows a real techno track out of any words you give it, plays it in a band above your chat box, and mixes itself into the next track when it ends. Kick first. Bass rolls in. Hats. Three drops with breakdowns between them. Then it hands the beat to a new song, layer by layer, without ever stopping.
 

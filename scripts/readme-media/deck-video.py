@@ -65,17 +65,17 @@ def frame(t):
     g = d['parts'][str(part)][bar]
     im = Image.new('RGB', (W, H), BG)
     dr = ImageDraw.Draw(im)
-    dr.rounded_rectangle([X0, Y0, W - X0, Y0 + 430], 14, fill=PANEL, outline=BORDER, width=2)
+    dr.rounded_rectangle([X0, Y0, W - X0, Y0 + 470], 14, fill=PANEL, outline=BORDER, width=2)
     # the top line: the transport and the track
     c = skip_icon(dr, 0, 0, True)
     c = button(dr, c + 1, 0, '■ stop', False)
     c = skip_icon(dr, c, 0, False)
     c = text(dr, c + 2, 0, 'late night deploy', TEXT, FB)
     c = text(dr, c + 1, 0, '♡ ↗', TEXT)
-    c = text(dr, c + 2, 0, 'vol', DIM)  # the volume: vol − ▂▃▄▆█ +, four bars lit
-    c = text(dr, c + 1, 0, '−', TEXT) + 1
-    for n, ch in enumerate('▂▃▄▆█'): text(dr, c + n, 0, ch, TEXT if n < 4 else FAINT, F)
-    text(dr, c + 6, 0, '+', TEXT)
+    c = text(dr, c + 2, 0, 'vol', DIM)  # the volume: vol − 80% +
+    c = text(dr, c + 1, 0, '−', TEXT)
+    c = text(dr, c + 1, 0, '80%', TEXT, FB)
+    text(dr, c + 1, 0, '+', TEXT)
     right = int((W - 2 * X0 - 48) // CW)
     button(dr, right - 14, 0, '● auto', True)
     text(dr, right - 4, 0, 'hide', DIM)
@@ -97,16 +97,22 @@ def frame(t):
         start += n
     c = text(dr, c + 2, 1, d['sections'][part], ACCENT, FB)
     text(dr, c + 1, 1, f'· {mmss(pos * LOOP + inloop)} / {mmss(TOTAL)}', DIM)
+    # the mood and the tempo, over the grid
+    c = text(dr, 0, 2, 'mood', DIM)
+    c = button(dr, c + 2, 2, 'sad', False)
+    c = button(dr, c, 2, 'mysterious', False)
+    c = button(dr, c, 2, 'dark', True)
+    text(dr, c, 2, '133 bpm', DIM)
     # the grid: the ruler, then one row per sound; the next sound dashed
     LABEL = 7
     cellx = lambda i: LABEL + i * 3 + i // 4
     for i in range(16):
         on = i == step
-        text(dr, cellx(i), 2, str(i // 4 + 1) if i % 4 == 0 else '·', TEXT if on else DIM, FB if on else F)
+        text(dr, cellx(i), 3, str(i // 4 + 1) if i % 4 == 0 else '·', TEXT if on else DIM, FB if on else F)
     rows = [n for n in ORDER if n in g]
     if part == 4: rows.append('clap')       # the next sound, dashed
     for r, name in enumerate(rows):
-        row = 3 + r
+        row = 4 + r
         nxt = part == 4 and name == 'clap'
         text(dr, 0, row, name, DIM if nxt else TEXT, F if nxt else FB)
         pat = g.get(name) or d['parts']['5'][0]['clap']
@@ -123,18 +129,14 @@ def frame(t):
             else: fill = SUBTLE
             dr.rectangle([x, y, x + w, y + 26], fill=fill)
     # the bottom line
-    row = 3 + len(rows) + 0.4
-    c = text(dr, 0, row, 'mood', DIM)
-    c = button(dr, c + 2, row, 'sad', False)
-    c = button(dr, c, row, 'mysterious', False)
-    c = button(dr, c, row, 'dark', True)
-    text(dr, c, row, '133 bpm', DIM)
+    row = 4 + len(rows) + 0.4
+    text(dr, 0, row, '+ new song', TEXT)
     text(dr, right - 24, row, 'edit', TEXT)
     text(dr, right - 17, row, '♥ favorites 4', TEXT)
     # the chat box under the band, for scale
-    dr.rounded_rectangle([X0, Y0 + 450, W - X0, Y0 + 510], 12, outline=BORDER, width=2)
-    dr.text((X0 + 24, Y0 + 466), '> ', font=F, fill=DIM)
-    dr.text((X0 + 24 + 2 * CW, Y0 + 466), 'make it darker', font=F, fill=FAINT)
+    dr.rounded_rectangle([X0, Y0 + 490, W - X0, Y0 + 550], 12, outline=BORDER, width=2)
+    dr.text((X0 + 24, Y0 + 506), '> ', font=F, fill=DIM)
+    dr.text((X0 + 24 + 2 * CW, Y0 + 506), 'make it darker', font=F, fill=FAINT)
     dr.text((X0, 50), 'claude-techno-mod', font=FB, fill=TEXT)
     dr.text((X0 + 20 * CW, 50), '/techno late night deploy', font=F, fill=ACCENT)
     return im

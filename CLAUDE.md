@@ -127,7 +127,10 @@ node 20 or later. Public at https://github.com/ruslanshchuchkin/claude-techno-mo
   `screencapture` gives a black image (no Screen Recording permission), so
   `scripts/readme-media/deck-video.py` draws the deck from the engine's grid
   per bar, in sync with the audio: the riser, then drop 1 at 0:05. The README
-  top is that video only (now `6ed4eca8-...`, the 0.9.7 layout); Ruslan: "just keep the video, it already shows the first frame",
+  top is that video only (now `bdcea65c-...`, the 0.9.8 layout, with a
+  "Claude. Techno. Mod." voice-over: Whisper in the riser, Daniel on the
+  drop, the music ducked under it; the engine's own voice layer was too
+  buried to understand); Ruslan: "just keep the video, it already shows the first frame",
   so no GIF. Rebuild and upload it again after a deck change:
   `scripts/readme-media/README.md`.
 - **The README demo**: the waveform mp4 plays inline (uploaded 2026-10-05 as

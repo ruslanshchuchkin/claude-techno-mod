@@ -58,6 +58,14 @@ node 20 or later. Public at https://github.com/ruslanshchuchkin/claude-techno-mo
   that line from `daemon.out` and shows it in the band. `git clone` sets no
   quarantine flag, so Gatekeeper lets the binary run. Option C waits until
   people ask for it.
+- **0.9.6: the volume is a meter, the bar names the section** (Ruslan: "i
+  don't like how volume looks like", "kick - it's not clear what it means";
+  picked A of meter / slider / number, and A of section names / plus a
+  countdown / a section map). The volume is 🔉 and five rising bars
+  `▂▃▄▆█`, lit up to the level (`METER` in views.js). The part bar says the
+  section, not the part: intro, groove, build, drop 1..3, break, outro,
+  "mixing in" (`sectionLabel()` in conductor.js, also in Control Center).
+  The README video (`user-attachments/assets/c764fccd-...`) shows both.
 - **0.9.5: the volume, option B** (picked from A a − / + stepper in the bottom
   line, B blocks in the top line, C only through Claude; Ruslan: "B but remove
   dark and 132 bpm - it doesn't belong here, move it down"). `volume()` in
@@ -95,8 +103,7 @@ node 20 or later. Public at https://github.com/ruslanshchuchkin/claude-techno-mo
   `screencapture` gives a black image (no Screen Recording permission), so
   `scripts/readme-media/deck-video.py` draws the deck from the engine's grid
   per bar, in sync with the audio: the riser, then drop 1 at 0:05. The README
-  top is that video only (`user-attachments/assets/905503cd-...`, 0.9.5
-  layout); Ruslan: "just keep the video, it already shows the first frame",
+  top is that video only (now `c764fccd-...`, the 0.9.6 layout); Ruslan: "just keep the video, it already shows the first frame",
   so no GIF. Rebuild and upload it again after a deck change:
   `scripts/readme-media/README.md`.
 - **The README demo**: the waveform mp4 plays inline (uploaded 2026-10-05 as

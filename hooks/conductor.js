@@ -139,3 +139,8 @@ export function mixer() {
     },
   }
 }
+
+// What the deck calls the part that plays: its section (intro, groove,
+// build, break, outro), a drop with its number, "mixing in" in a handover
+// (Ruslan, 2026-10-05, option A: "kick - it's not clear what it means").
+export const sectionLabel = (v) => (!v ? '' : v.section === 'handover' ? 'mixing in' : v.section === 'drop' ? v.name : v.section)

@@ -11,7 +11,7 @@
 
 </div>
 
-https://github.com/user-attachments/assets/905503cd-ac63-473b-ab5c-01c348f5efa4
+https://github.com/user-attachments/assets/c764fccd-e7e4-4fc8-a6a6-3348d1d51248
 
 <p align="center"><sub>🔊 <b>Now with sound.</b> The riser, then drop 1 lands at 0:05 · no player? <a href="https://cdn.jsdelivr.net/gh/ruslanshchuchkin/claude-techno-mod@main/media/late-night-deploy-drop-1.mp3">play the mp3</a></sub></p>
 
@@ -57,8 +57,8 @@ The band in the video above, part by part:
 | On the deck | What it does |
 |---|---|
 | **♡ / ↗** | Keep the track in favorites / copy its share line |
-| **🔉 ▮▮▮▮▯** | The volume. Click a block to set it, the speaker to mute. Or ask Claude: *"quieter"* |
-| **▰▰▱▱** | The whole song, one block per 15 seconds |
+| **🔉 ▂▃▄▆█** | The volume. Click a bar to set it, the speaker to mute. Or ask Claude: *"quieter"* |
+| **▰▰▱▱ drop 1** | The whole song, one block per 15 seconds, and where you are: intro, groove, build, drop, break, outro |
 | **the grid** | The loop that plays now. Click a cell to add a hit, click a name to mute it |
 | **auto** | On: it plays the whole set and moves on by itself. Off: it stays on one part |
 | **mood** | **sad**, **mysterious** or **dark**: the scale, the tempo and the energy in one click. The bpm sits beside it |

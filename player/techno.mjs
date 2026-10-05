@@ -275,7 +275,7 @@ function onHelper(m) {
 }
 
 function sendInfo(v = segs.get(playingId)?.view ?? viewOf(cursor.set, 0, C.loopSpec(cursor.set, { auto: st.auto }))) {
-  send({ op: 'info', title: v.phrase, artist: `techno · ${v.mood} · ${v.name}` })
+  send({ op: 'info', title: v.phrase, artist: `techno · ${v.mood} · ${C.sectionLabel(v)}` })
 }
 
 // A change to the set. While music plays it lands on the next bar: the queued

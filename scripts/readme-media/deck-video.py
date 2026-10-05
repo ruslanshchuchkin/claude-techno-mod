@@ -73,10 +73,8 @@ def frame(t):
     c = text(dr, c + 2, 0, 'late night deploy', TEXT, FB)
     c = text(dr, c + 1, 0, '♡ ↗', TEXT)
     c = speaker(dr, c + 2, 0)
-    for n in range(5):  # the five volume blocks, four lit
-        x, y = col(c) + n * 14, Y0 + 24 + 6
-        if n < 4: dr.rectangle([x, y, x + 8, y + 18], fill=TEXT)
-        else: dr.rectangle([x, y, x + 8, y + 18], outline=DIM, width=2)
+    for n, ch in enumerate('▂▃▄▆█'):  # the volume meter, four bars lit
+        text(dr, c + 1 + n, 0, ch, TEXT if n < 4 else FAINT, F)
     right = int((W - 2 * X0 - 48) // CW)
     button(dr, right - 14, 0, '● auto', True)
     text(dr, right - 4, 0, 'hide', DIM)
@@ -96,7 +94,7 @@ def frame(t):
             if cell == pos: dr.rounded_rectangle([x, y, x + max(3, (CW - 4) * frac), y + 14], 3, fill=ACCENT)
             c += 1
         start += n
-    c = text(dr, c + 2, 1, d['names'][part], ACCENT, FB)
+    c = text(dr, c + 2, 1, d['sections'][part], ACCENT, FB)
     text(dr, c + 1, 1, f'· {mmss(pos * LOOP + inloop)} / {mmss(TOTAL)}', DIM)
     # the grid: the ruler, then one row per sound; the next sound dashed
     LABEL = 7

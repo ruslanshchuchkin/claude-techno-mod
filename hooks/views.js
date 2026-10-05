@@ -4,14 +4,17 @@
 // the calls to the player.
 //
 // Layout A with the part bar (Ruslan, 2026-10-04): one line on top (previous,
-// play and next track side by side, the track, favorite, mood and tempo; auto
-// and hide on the right), the part bar, the grid, one line under it
-// (mood, next part, edit, favorites), and the edit line when edit is open.
+// play and next track side by side, the track, favorite, share, the volume;
+// auto and hide on the right), the part bar with the section, the grid, one
+// line under it (mood, tempo, next part, edit, favorites), and the edit card
+// when edit is open.
 // Three screens: the deck, the favorites (with the tracks you heard), and new
 // tracks.
 //
 // A selected thing (the mood, auto on) is a filled primary button, not
 // brighter text: dim against normal text cannot be read in the light theme.
+
+import { sectionLabel } from './conductor.js'
 
 const row = (ui, children, extra = {}) => ui.Box({ flexDirection: 'row', flexWrap: 'wrap', columnGap: 1, alignItems: 'center', children: children.filter(Boolean), ...extra })
 const col = (ui, children, extra = {}) => ui.Box({ flexDirection: 'column', children: children.filter(Boolean), ...extra })
@@ -40,13 +43,16 @@ function transport(ui, vm, act, prefix) {
   ]
 }
 
-// The volume: the speaker mutes and brings it back, then five blocks; a
-// click sets the level, a click on the only lit block mutes.
+// The volume, a meter (Ruslan, 2026-10-05, option A of meter, slider,
+// number): the speaker mutes and brings it back, then five rising bars, lit
+// up to the level. A click sets the level, a click on the only lit bar mutes.
+const METER = ['▂', '▃', '▄', '▆', '█']
 function volume(ui, vm, act, prefix) {
   const level = vm.volume ?? 4
   return ui.Box({ key: prefix + 'volume', flexDirection: 'row', flexShrink: 0, children: [
     ui.Button({ key: prefix + 'vol-mute', label: level ? '🔉' : '🔇', plain: true, dimColor: !level, onPress: () => act.volume(level ? 0 : 4) }),
-    ...[1, 2, 3, 4, 5].map((n) => ui.Button({ key: prefix + 'vol-' + n, label: n <= level ? '▮' : '▯', plain: true, dimColor: n > level, onPress: () => act.volume(n === level && n === 1 ? 0 : n) })),
+    ui.Text({ children: [' '] }),
+    ...METER.map((bar, i) => ui.Button({ key: prefix + 'vol-' + (i + 1), label: bar, plain: true, dimColor: i + 1 > level, onPress: () => act.volume(i + 1 === level && level === 1 ? 0 : i + 1) })),
   ] })
 }
 
@@ -89,7 +95,7 @@ function whereLine(ui, vm) {
   }
   return row(ui, [
     ui.Box({ key: 'bar', flexDirection: 'row', flexShrink: 0, children: runs.map((r, i) => ({ ...look[r.c](r.n), key: 'run-' + i })) }),
-    ui.Text({ color: 'claude', bold: true, children: [v.section === 'handover' ? 'mixing in' : v.name] }),
+    ui.Text({ color: 'claude', bold: true, children: [sectionLabel(v)] }),
     v.from ? dim(ui, '← from ' + v.from, { wrap: 'truncate-end' }) : null,
     dim(ui, '· ' + clock(w.elapsed) + ' / ' + clock(w.total)),
   ], { key: 'where', columnGap: 1 })
@@ -278,7 +284,7 @@ export function miniView(ui, vm, act) {
   return spread(ui, [
     ui.Text({ bold: true, children: ['♪'] }),
     ...transport(ui, vm, act, 'mini-'),
-    ui.Text({ color: 'claude', children: [v.section === 'handover' ? 'mixing in' : v.name] }),
+    ui.Text({ color: 'claude', children: [sectionLabel(v)] }),
   ], [
     toggle(ui, 'mini-auto', vm.auto ? '● auto' : '○ auto', vm.auto, () => act.auto()),
     link(ui, 'mini-open', 'open', () => act.open()),

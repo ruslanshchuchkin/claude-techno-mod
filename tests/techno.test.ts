@@ -1,6 +1,6 @@
 import { expect, mock, test } from 'claude-code/testing'
 import { atPart, encodeCode, parseCode, toggleStep, trackFor, moodName, withVibe, activeLayers, transitionsOf, editTrack, planOf, planAdd, grid, soundInfo, INSTRUMENTS, PLAN, HANDOVERS, HANDOVER_LOOPS, BUILDS, FALLS } from '../hooks/engine.js'
-import { newSet, loopSpec, afterLoop, stepOn, posOf } from '../hooks/conductor.js'
+import { newSet, loopSpec, afterLoop, stepOn, posOf, sectionLabel } from '../hooks/conductor.js'
 import { partBar } from '../hooks/views.js'
 import { keyWords } from '../hooks/words.js'
 
@@ -149,7 +149,7 @@ test('the deck: play, the track and its mood, previous, favorite, auto; mood, ne
   await ui.unmount()
 })
 
-test('the volume: five blocks and the speaker beside the track, the tempo under the grid, Claude can turn it down', async ($, on) => {
+test('the volume: a five-bar meter and the speaker beside the track, the tempo under the grid, Claude can turn it down', async ($, on) => {
   const { player } = stubs(on)
   await start($)
   await $.command.run({ command: 'techno', args: '' })
@@ -157,11 +157,12 @@ test('the volume: five blocks and the speaker beside the track, the tempo under 
   // the mood and the tempo left the top line: the tempo sits in the bottom line
   expect((await ui.find({ text: /^\d{3} bpm$/ }))?.text).toMatch(/^\d{3} bpm$/)
   expect(await ui.find({ text: /· dark · \d{3} bpm/ })).toBeUndefined()
-  expect((await ui.find({ key: 'vol-4' }))?.props.label).toBe('▮')
-  expect((await ui.find({ key: 'vol-5' }))?.props.label).toBe('▯')
+  expect((await ui.find({ key: 'vol-4' }))?.props.dimColor).toBeFalsy()
+  expect((await ui.find({ key: 'vol-5' }))?.props.dimColor).toBe(true)
+  expect((await ui.find({ key: 'vol-5' }))?.props.label).toBe('█')
   await ui.press({ key: 'vol-2' })
   expect(player.volume).toBe(2)
-  expect((await ui.find({ key: 'vol-3' }))?.props.label).toBe('▯')
+  expect((await ui.find({ key: 'vol-3' }))?.props.dimColor).toBe(true)
   // the speaker mutes, and brings back the default
   await ui.press({ key: 'vol-mute' })
   expect(player.volume).toBe(0)
@@ -175,6 +176,19 @@ test('the volume: five blocks and the speaker beside the track, the tempo under 
   const r = await $.tool.call({ tool: 'mcp__techno__jam', volume: 3 })
   expect(player.volume).toBe(3)
   expect(String(r.result)).toContain('volume 3 of 5')
+})
+
+test('the part bar names the section, not the part: intro, not kick; a drop keeps its number', async ($, on) => {
+  const { player } = stubs(on)
+  await start($)
+  await $.command.run({ command: 'techno', args: '' })
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect(player.set.track.part).toBe(0)
+  expect(await ui.find({ text: /^intro$/ })).toBeDefined()
+  expect(await ui.find({ text: /^kick$/ })).toBeUndefined()
+  await ui.unmount()
+  expect(PLAN.map((p, i) => sectionLabel({ section: p.section, name: p.name }))).toEqual(['intro', 'intro', 'groove', 'groove', 'build', 'drop 1', 'break', 'drop 2', 'break', 'drop 3', 'outro'])
+  expect(sectionLabel({ section: 'handover', name: 'kick' })).toBe('mixing in')
 })
 
 test('chat words: a prompt gives its key words to the player, never a path, a key or a music request', async ($, on) => {

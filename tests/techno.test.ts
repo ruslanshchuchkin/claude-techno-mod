@@ -143,7 +143,8 @@ test('the deck: play, the track and its mood, previous, favorite, auto; mood, ne
   expect(await ui.find({ key: 'melody' })).toBeUndefined()
   await ui.press({ key: 'fav' })
   expect((await ui.find({ key: 'fav' }))?.props.label).toBe('♥')
-  // ↗ beside the heart copies the play line and says so under the deck
+  // share beside the heart copies the play line and says so under the deck
+  expect((await ui.find({ key: 'share' }))?.props.label).toBe('share')
   await ui.press({ key: 'share' })
   expect((await ui.find({ text: /✓ copied/ }))?.text).toContain('✓ copied: /techno ' + encodeCode(player.set.track))
   await ui.unmount()

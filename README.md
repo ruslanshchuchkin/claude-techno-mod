@@ -56,7 +56,7 @@ The band in the video above, part by part:
 
 | On the deck | What it does |
 |---|---|
-| **♡ / ↗** | Keep the track in favorites / copy its share line |
+| **♡ / share** | Keep the track in favorites / copy its share line |
 | **vol − 80% +** | The volume, in steps of 20%. `vol` mutes. Or ask Claude: *"quieter"* |
 | **▰▰▱▱ drop 1** | The whole song, one block per 15 seconds, and where you are: intro, groove, build, drop, break, outro |
 | **the grid** | The loop that plays now. Click a cell to add a hit, click a name to mute it |
@@ -85,7 +85,7 @@ Only plain words get in. Never paths, links, emails, numbers, or anything that l
 
 ## 🔗 Share a track
 
-A whole track, with your edits, is one line. Press **↗** and it's on your clipboard:
+A whole track, with your edits, is one line. Press **share** and it's on your clipboard:
 
 ```
 /techno late-night-deploy@133m0e4k2a5

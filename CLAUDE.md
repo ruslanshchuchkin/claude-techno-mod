@@ -58,6 +58,9 @@ node 20 or later. Public at https://github.com/ruslanshchuchkin/claude-techno-mo
   that line from `daemon.out` and shows it in the band. `git clone` sets no
   quarantine flag, so Gatekeeper lets the binary run. Option C waits until
   people ask for it.
+- **0.9.9: share is the word `share`** beside ♡ (picked B of the arrow /
+  the word / "↗ share song" under the grid), a bordered button, in the deck
+  and the bar. The README video still shows ↗ until the next deck redraw.
 - **0.9.8 layout** (Ruslan: "progress of the song, then intro, under it the
   mood, then the grid"; "new should be new song"; "i don't want to see these
   intro drop 1 at all here" about the bar). The deck, top to bottom: the

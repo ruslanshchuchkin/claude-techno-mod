@@ -38,7 +38,8 @@ function transport(ui, vm, act, prefix) {
     ui.Button({ key: prefix + 'skip', label: '⏭', onPress: () => act.skip() }),
     ui.Text({ bold: true, wrap: 'truncate-end', children: [v.phrase] }),
     ui.Button({ key: prefix + 'fav', label: vm.fav ? '♥' : '♡', plain: true, onPress: () => act.fav() }),
-    ui.Button({ key: prefix + 'share', label: '↗', plain: true, onPress: () => act.copy() }),
+    // the word, not an arrow (Ruslan, 2026-10-05, option B of arrow / word / under the grid)
+    ui.Button({ key: prefix + 'share', label: 'share', onPress: () => act.copy() }),
     volume(ui, vm, act, prefix),
   ]
 }

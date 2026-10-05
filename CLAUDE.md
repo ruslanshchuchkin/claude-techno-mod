@@ -81,6 +81,13 @@ node 20 or later. Public at https://github.com/ruslanshchuchkin/claude-techno-mo
 - **The web page with a player is parked** ("for now let's focus not on web
   page but on packaging"). A proof in `web/` (not committed) plays the same
   engine and conductor in a browser worker; a loop renders in 0.2 to 0.5 s.
+- **The README media, drawn** (2026-10-05, Ruslan: "record it playing!").
+  `screencapture` gives a black image (no Screen Recording permission), so
+  `scripts/readme-media/deck-video.py` draws the deck from the engine's grid
+  per bar, in sync with the audio: the riser, then drop 1 at 0:05. The README
+  top is `media/deck.gif` (silent, moves without a click), then that video
+  (`user-attachments/assets/bd6b2148-...`). Rebuild both after a deck change:
+  `scripts/readme-media/README.md`.
 - **The README demo**: the waveform mp4 plays inline (uploaded 2026-10-05 as
   `user-attachments/assets/187aec4d-...`: a file dropped into a new issue box
   in Ruslan's Chrome, the draft cleared, nothing posted); the mp3 link stays

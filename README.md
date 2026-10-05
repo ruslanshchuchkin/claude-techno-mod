@@ -11,21 +11,11 @@
 
 </div>
 
-```
-⏮ ■ stop ⏭  late night deploy ♡ ↗ · dark · 133 bpm              ● auto  hide
-▰▰▰▰▰▰▰▰▰▰▰▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱  drop 1  2:38 / 6:29
-       1  ·  ·  ·   2  ·  ·  ·   3  ·  ·  ·   4  ·  ·  ·
-kick   ██ ░░ ░░ ░░  ██ ░░ ░░ ░░  ██ ░░ ░░ ░░  ██ ░░ ░░ ░░
-hats   ██ ██ ██ ██  ██ ██ ██ ██  ██ ██ ██ ██  ██ ██ ██ ██
-bass   ░░ ░░ ██ ██  ░░ ░░ ██ ██  ░░ ░░ ██ ██  ░░ ░░ ██ ██
-perc   ░░ ██ ░░ ██  ░░ ░░ ░░ ██  ░░ ██ ░░ ░░  ░░ ██ ░░ ░░
-clap   ░░ ░░ ░░ ░░  ██ ░░ ░░ ░░  ░░ ░░ ░░ ░░  ██ ░░ ░░ ░░
-mood  sad  mysterious  [dark]   edit   ♥ favorites 4
-```
+<p align="center"><img src="media/deck.gif" alt="The techno deck above the chat box: the transport, the song bar and the step grid playing drop 1" width="900"></p>
 
-https://github.com/user-attachments/assets/187aec4d-abd6-409c-b0b2-9e16d6883df0
+https://github.com/user-attachments/assets/bd6b2148-5a8c-4d25-a8c4-9876c196982b
 
-<p align="center"><sub>🔊 <b>Sound on.</b> The riser into drop 1 of <code>/techno late night deploy</code> · no player? <a href="https://cdn.jsdelivr.net/gh/ruslanshchuchkin/claude-techno-mod@main/media/late-night-deploy-drop-1.mp3">play the mp3</a></sub></p>
+<p align="center"><sub>🔊 <b>Now with sound.</b> The riser, then drop 1 lands at 0:05 · no player? <a href="https://cdn.jsdelivr.net/gh/ruslanshchuchkin/claude-techno-mod@main/media/late-night-deploy-drop-1.mp3">play the mp3</a></sub></p>
 
 A [Claude Code](https://claude.com/claude-code) mod that plays a real techno set in a band above your chat box.
 

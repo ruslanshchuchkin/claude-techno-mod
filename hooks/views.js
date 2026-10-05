@@ -24,7 +24,9 @@ const link = (ui, key, label, onPress) => ui.Button({ key, label, plain: true, d
 const clock = (ms) => { const s = Math.floor(ms / 1000); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0') }
 
 // The transport, shared by the deck and the bar: previous, play or stop,
-// next track, then the track, its heart, mood and tempo.
+// next track, then the track, its heart and share, and the volume (Ruslan,
+// 2026-10-05, option B: "remove dark and 132 bpm ... move it down"; the mood
+// and the tempo sit in the bottom line now).
 function transport(ui, vm, act, prefix) {
   const v = vm.view
   return [
@@ -34,8 +36,18 @@ function transport(ui, vm, act, prefix) {
     ui.Text({ bold: true, wrap: 'truncate-end', children: [v.phrase] }),
     ui.Button({ key: prefix + 'fav', label: vm.fav ? '♥' : '♡', plain: true, onPress: () => act.fav() }),
     ui.Button({ key: prefix + 'share', label: '↗', plain: true, onPress: () => act.copy() }),
-    dim(ui, '· ' + v.mood + ' · ' + v.bpm + ' bpm'),
+    volume(ui, vm, act, prefix),
   ]
+}
+
+// The volume: the speaker mutes and brings it back, then five blocks; a
+// click sets the level, a click on the only lit block mutes.
+function volume(ui, vm, act, prefix) {
+  const level = vm.volume ?? 4
+  return ui.Box({ key: prefix + 'volume', flexDirection: 'row', flexShrink: 0, children: [
+    ui.Button({ key: prefix + 'vol-mute', label: level ? '🔉' : '🔇', plain: true, dimColor: !level, onPress: () => act.volume(level ? 0 : 4) }),
+    ...[1, 2, 3, 4, 5].map((n) => ui.Button({ key: prefix + 'vol-' + n, label: n <= level ? '▮' : '▯', plain: true, dimColor: n > level, onPress: () => act.volume(n === level && n === 1 ? 0 : n) })),
+  ] })
 }
 
 function topLine(ui, vm, act) {
@@ -87,6 +99,7 @@ function bottomLine(ui, vm, act) {
   return spread(ui, [
     dim(ui, 'mood'),
     ...['sad', 'mysterious', 'dark'].map((name) => toggle(ui, 'mood-' + name, name, vm.view.mood === name, () => act.mood(name))),
+    dim(ui, vm.view.bpm + ' bpm', { key: 'bpm' }),
   ], [
     vm.auto ? null : ui.Button({ key: 'next', label: 'next part ›', onPress: () => act.next(), hotkey: 'n' }),
     toggle(ui, 'edit', 'edit', vm.editOpen, () => act.edit(), { hotkey: 'e' }),

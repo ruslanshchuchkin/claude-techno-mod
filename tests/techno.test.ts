@@ -16,14 +16,14 @@ const PANE = {
 // A fake of the background player (player/techno.mjs): the same answers on
 // the socket, with the real conductor, and no sound.
 function fakePlayer() {
-  const p: any = { set: newSet(trackFor('late night deploy')), playing: false, auto: true, favorites: [], history: [], rev: 1, said: '', cmds: [] as any[] }
+  const p: any = { set: newSet(trackFor('late night deploy')), volume: 4, playing: false, auto: true, favorites: [], history: [], rev: 1, said: '', cmds: [] as any[] }
   const id = (t: any) => encodeCode({ ...t, part: null })
   const view = () => {
     const t = p.set.track
     const nx = PLAN[t.part + 1]
     return { code: encodeCode(t), id: id(t), phrase: t.phrase, mood: moodName(t), bpm: t.bpm, part: t.part, section: PLAN[t.part].section, name: PLAN[t.part].name, from: null, next: nx ? { name: nx.name, adds: nx.adds, layer: nx.layer } : { name: 'the next track' }, bar: 0, loopsLeft: 1, at: posOf(p.set), plan: planOf(t) }
   }
-  const state = () => ({ version: '9.9.9', rev: p.rev, now: 0, playing: p.playing, auto: p.auto, playlist: null, view: view(), barStartedAt: 0, barMs: 1800, stepMs: 112, nextInMs: p.playing && p.auto ? 23000 : null, fav: p.favorites.some((f: any) => f.code === id(p.set.track)), favorites: p.favorites, recent: p.history.map((c: string) => ({ code: c, label: parseCode(c)!.phrase, mood: 'dark', bpm: 128 })), said: p.said, canUndo: false })
+  const state = () => ({ version: '9.9.9', rev: p.rev, now: 0, playing: p.playing, auto: p.auto, playlist: null, view: view(), barStartedAt: 0, barMs: 1800, stepMs: 112, nextInMs: p.playing && p.auto ? 23000 : null, fav: p.favorites.some((f: any) => f.code === id(p.set.track)), favorites: p.favorites, recent: p.history.map((c: string) => ({ code: c, label: parseCode(c)!.phrase, mood: 'dark', bpm: 128 })), said: p.said, canUndo: false, volume: p.volume })
   p.command = (c: any) => {
     p.cmds.push(c)
     p.rev++
@@ -31,6 +31,7 @@ function fakePlayer() {
     if (c.op === 'play') p.playing = true
     if (c.op === 'pause') p.playing = false
     if (c.op === 'auto') p.auto = c.on
+    if (c.op === 'volume') p.volume = c.level
     if (c.op === 'next') stepOn(p.set, () => trackFor('ship it'))
     if (c.op === 'pick') { p.history.push(id(t)); p.set = newSet(atPart(parseCode(c.code) ?? trackFor(c.code), 0)); p.playing = true }
     if (c.op === 'prev' && p.history.length) p.set = newSet(atPart(parseCode(p.history.pop())!, 0))
@@ -118,7 +119,7 @@ test('the deck: play, the track and its mood, previous, favorite, auto; mood, ne
   await $.command.run({ command: 'techno', args: '' })
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ ...PANE, surface })
-    for (const key of ['play', 'skip', 'fav', 'share', 'auto', 'where', 'grid', 'mood-sad', 'mood-mysterious', 'mood-dark', 'edit', 'favorites']) expect(await ui.find({ key })).toBeDefined()
+    for (const key of ['play', 'skip', 'fav', 'share', 'vol-mute', 'vol-1', 'vol-5', 'auto', 'where', 'grid', 'mood-sad', 'mood-mysterious', 'mood-dark', 'edit', 'favorites']) expect(await ui.find({ key })).toBeDefined()
     // auto is on: the set moves by itself, so there is no next part button
     expect(await ui.find({ key: 'next' })).toBeUndefined()
     expect((await ui.find({ key: 'auto' }))?.props.variant).toBe('primary')
@@ -146,6 +147,34 @@ test('the deck: play, the track and its mood, previous, favorite, auto; mood, ne
   await ui.press({ key: 'share' })
   expect((await ui.find({ text: /✓ copied/ }))?.text).toContain('✓ copied: /techno ' + encodeCode(player.set.track))
   await ui.unmount()
+})
+
+test('the volume: five blocks and the speaker beside the track, the tempo under the grid, Claude can turn it down', async ($, on) => {
+  const { player } = stubs(on)
+  await start($)
+  await $.command.run({ command: 'techno', args: '' })
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  // the mood and the tempo left the top line: the tempo sits in the bottom line
+  expect((await ui.find({ text: /^\d{3} bpm$/ }))?.text).toMatch(/^\d{3} bpm$/)
+  expect(await ui.find({ text: /· dark · \d{3} bpm/ })).toBeUndefined()
+  expect((await ui.find({ key: 'vol-4' }))?.props.label).toBe('▮')
+  expect((await ui.find({ key: 'vol-5' }))?.props.label).toBe('▯')
+  await ui.press({ key: 'vol-2' })
+  expect(player.volume).toBe(2)
+  expect((await ui.find({ key: 'vol-3' }))?.props.label).toBe('▯')
+  // the speaker mutes, and brings back the default
+  await ui.press({ key: 'vol-mute' })
+  expect(player.volume).toBe(0)
+  await ui.press({ key: 'vol-mute' })
+  expect(player.volume).toBe(4)
+  // a click on the only lit block mutes
+  await ui.press({ key: 'vol-1' })
+  await ui.press({ key: 'vol-1' })
+  expect(player.volume).toBe(0)
+  await ui.unmount()
+  const r = await $.tool.call({ tool: 'mcp__techno__jam', volume: 3 })
+  expect(player.volume).toBe(3)
+  expect(String(r.result)).toContain('volume 3 of 5')
 })
 
 test('chat words: a prompt gives its key words to the player, never a path, a key or a music request', async ($, on) => {

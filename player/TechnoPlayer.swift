@@ -16,7 +16,7 @@ import AVFoundation
 import MediaPlayer
 
 let sampleRate = 44100.0
-// TECHNO_GAIN=0 mutes it (tests)
+// TECHNO_GAIN=0 mutes it (tests); the volume op scales it (1 = this gain)
 let gain: Float = Float(ProcessInfo.processInfo.environment["TECHNO_GAIN"] ?? "") ?? 0.7
 
 final class Segment {
@@ -36,6 +36,9 @@ final class Player {
   var events: [String] = []
   var starved = false
   var running = false
+  // the volume: `level` is where it goes, `now` follows it over about 20 ms
+  var level: Float = 1
+  var now: Float = 1
 
   init() {
     let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 2)!
@@ -65,8 +68,10 @@ final class Player {
         let take = min(n - i, seg.frames - seg.pos)
         seg.data.withUnsafeBufferPointer { p in
           for k in 0..<take {
-            left[i + k] = p[(seg.pos + k) * 2] * gain
-            right[i + k] = p[(seg.pos + k) * 2 + 1] * gain
+            if self.now != self.level { self.now += max(-1.0 / 882, min(1.0 / 882, self.level - self.now)) }
+            let g = gain * self.now
+            left[i + k] = p[(seg.pos + k) * 2] * g
+            right[i + k] = p[(seg.pos + k) * 2 + 1] * g
           }
         }
         seg.pos += take
@@ -158,6 +163,8 @@ Thread.detachNewThread {
         if let t = o["title"] as? String { info[MPMediaItemPropertyTitle] = t }
         if let a = o["artist"] as? String { info[MPMediaItemPropertyArtist] = a }
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+      case "volume":
+        if let v = o["level"] as? Double { player.lock.lock(); player.level = Float(max(0, min(2, v))); if !player.running { player.now = player.level }; player.lock.unlock() }
       case "quit": exit(0)
       default: break
       }

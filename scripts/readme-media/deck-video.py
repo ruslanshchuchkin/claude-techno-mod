@@ -48,6 +48,13 @@ def skip_icon(dr, c, row, back):
         dr.polygon([(x, y), (x + 13, y + 9), (x, y + 18)], fill=TEXT); dr.rectangle([x + 15, y, x + 18, y + 18], fill=TEXT)
     return c + 3
 
+def speaker(dr, c, row):
+    x, y = col(c), Y0 + 24 + row * 40 + 6
+    dr.rectangle([x, y + 5, x + 5, y + 12], fill=TEXT)
+    dr.polygon([(x + 5, y + 5), (x + 12, y), (x + 12, y + 17), (x + 5, y + 12)], fill=TEXT)
+    dr.arc([x + 10, y + 2, x + 20, y + 15], -50, 50, fill=TEXT, width=2)
+    return c + 3
+
 def frame(t):
     T = START + t
     k = int(T // LOOP)                      # 0 the riser loop, 1 the drop
@@ -65,7 +72,11 @@ def frame(t):
     c = skip_icon(dr, c, 0, False)
     c = text(dr, c + 2, 0, 'late night deploy', TEXT, FB)
     c = text(dr, c + 1, 0, '♡ ↗', TEXT)
-    text(dr, c + 1, 0, '· dark · 133 bpm', DIM)
+    c = speaker(dr, c + 2, 0)
+    for n in range(5):  # the five volume blocks, four lit
+        x, y = col(c) + n * 14, Y0 + 24 + 6
+        if n < 4: dr.rectangle([x, y, x + 8, y + 18], fill=TEXT)
+        else: dr.rectangle([x, y, x + 8, y + 18], outline=DIM, width=2)
     right = int((W - 2 * X0 - 48) // CW)
     button(dr, right - 14, 0, '● auto', True)
     text(dr, right - 4, 0, 'hide', DIM)
@@ -118,6 +129,7 @@ def frame(t):
     c = button(dr, c + 2, row, 'sad', False)
     c = button(dr, c, row, 'mysterious', False)
     c = button(dr, c, row, 'dark', True)
+    text(dr, c, row, '133 bpm', DIM)
     text(dr, right - 24, row, 'edit', TEXT)
     text(dr, right - 17, row, '♥ favorites 4', TEXT)
     # the chat box under the band, for scale

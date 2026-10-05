@@ -11,9 +11,7 @@
 
 </div>
 
-<p align="center"><img src="media/deck.gif" alt="The techno deck above the chat box: the transport, the song bar and the step grid playing drop 1" width="900"></p>
-
-https://github.com/user-attachments/assets/bd6b2148-5a8c-4d25-a8c4-9876c196982b
+https://github.com/user-attachments/assets/905503cd-ac63-473b-ab5c-01c348f5efa4
 
 <p align="center"><sub>🔊 <b>Now with sound.</b> The riser, then drop 1 lands at 0:05 · no player? <a href="https://cdn.jsdelivr.net/gh/ruslanshchuchkin/claude-techno-mod@main/media/late-night-deploy-drop-1.mp3">play the mp3</a></sub></p>
 
@@ -54,15 +52,16 @@ Press play. 🔊
 
 ## 🎚️ The deck
 
-The band at the top of this page, part by part:
+The band in the video above, part by part:
 
 | On the deck | What it does |
 |---|---|
 | **♡ / ↗** | Keep the track in favorites / copy its share line |
+| **🔉 ▮▮▮▮▯** | The volume. Click a block to set it, the speaker to mute. Or ask Claude: *"quieter"* |
 | **▰▰▱▱** | The whole song, one block per 15 seconds |
 | **the grid** | The loop that plays now. Click a cell to add a hit, click a name to mute it |
 | **auto** | On: it plays the whole set and moves on by itself. Off: it stays on one part |
-| **mood** | **sad**, **mysterious** or **dark**: the scale, the tempo and the energy in one click |
+| **mood** | **sad**, **mysterious** or **dark**: the scale, the tempo and the energy in one click. The bpm sits beside it |
 | **edit** | The studio: instruments, patterns, notes, grit, filters, tempo, and the song's parts |
 | <kbd>⏯</kbd> <kbd>⏭</kbd> <kbd>⏮</kbd> | The Mac media keys work too, and the track shows in Control Center |
 

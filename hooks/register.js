@@ -15,7 +15,7 @@ import { keyWords } from './words.js'
 const TOOL = 'mcp__techno__jam'
 // The plugin version: in the jam tool's answer, and the player of an older
 // version is replaced by this one. Keep it equal to plugin.json (a test checks).
-const VERSION = '0.9.4'
+const VERSION = '0.9.5'
 // [accent, normal] fill of a hit in the step grid
 const LAYER_COLORS = {
   kick: ['#e85a5a', '#c94040'],
@@ -229,7 +229,7 @@ export function register(on) {
         "Change the techno music in the user's techno pane (the techno mod). Use it when the user asks to change the music: darker or brighter, more or less energy, faster or slower, add or drop a layer, new patterns, the next part, the next or previous track, a new phrase, auto on or off, play or stop. Pass only what changes. " +
         'mood: sad (minor), mysterious (hijaz, arabic) or dark (phrygian); it sets the sound, the scale and the tempo together. energy: 0 minimal, 1 rolling, 2 driving, 3 peak, 4 rave. ' +
         'A track is a long set: intro, groove, build, three drops with breakdowns between them, an outro that mixes into the next track. next: true moves to the next part. track: "next" mixes into the next track now, "previous" goes back to the one before. ' +
-        'layers (kick, bass, hats, clap, perc, ride, pad, rumble, acid, voice, stab): true forces a layer on, false off, "auto" gives it back to the arrangement. dice: true rolls new patterns. phrase: a new phrase starts a new track. favorite: true adds the track to the favorites. ' +
+        'layers (kick, bass, hats, clap, perc, ride, pad, rumble, acid, voice, stab): true forces a layer on, false off, "auto" gives it back to the arrangement. dice: true rolls new patterns. phrase: a new phrase starts a new track. favorite: true adds the track to the favorites. volume: 0 mute .. 5 loudest, 4 is the default (each step about 6 dB); for "quieter" or "louder" move it one step. ' +
         'note: a few words for the pane that say what you changed. Reply to the user in one short line.',
       inputSchema: {
         type: 'object',
@@ -246,6 +246,7 @@ export function register(on) {
           layers: { type: 'object', properties: Object.fromEntries(LAYERS.map((n) => [n, { enum: [true, false, 'auto'] }])), additionalProperties: false },
           favorite: { type: 'boolean', description: 'true adds the playing track to the favorites, false removes it' },
           play: { type: 'boolean', description: 'true starts the music, false stops it' },
+          volume: { type: 'integer', minimum: 0, maximum: 5, description: '0 mute, 4 the default, 5 loudest' },
           auto: { type: 'boolean', description: 'true lets the set play by itself (parts, drops, then the next track); false stays on a part until next' },
           note: { type: 'string', description: 'A few words for the pane, like "darker, acid on"' },
         },
@@ -292,6 +293,7 @@ export function register(on) {
     if (Object.keys(jam).length > 2) { await cmd($, jam); done.push('changed ' + Object.keys(jam).filter((k) => k !== 'op' && k !== 'note').join(', ')) }
     if (typeof e.auto === 'boolean') { await cmd($, { op: 'auto', on: e.auto }); done.push('auto ' + (e.auto ? 'on' : 'off')) }
     if (typeof e.favorite === 'boolean' && s.ps && s.ps.fav !== e.favorite) { await cmd($, { op: 'fav' }); done.push(e.favorite ? 'added to favorites' : 'removed from favorites') }
+    if (Number.isInteger(e.volume)) { await cmd($, { op: 'volume', level: e.volume }); done.push('volume ' + e.volume) }
     if (e.play === true) await cmd($, { op: 'play' })
     if (e.play === false) await cmd($, { op: 'pause' })
     else if (!s.ps?.playing && (e.phrase || e.track)) await cmd($, { op: 'play' })
@@ -300,7 +302,7 @@ export function register(on) {
     s.isOpen = true
     s.screen = 'deck'
     $.ui.invalidate('ui.render')
-    return { result: `${done.join('; ') || 'no change'}. Now: ${describeNow()}. Auto ${s.ps.auto ? 'on' : 'off'}, ${s.ps.playing ? 'playing' : 'stopped'}. Share line: ${shareLine(s.ps.view.code)} (techno v${VERSION})` }
+    return { result: `${done.join('; ') || 'no change'}. Now: ${describeNow()}. Auto ${s.ps.auto ? 'on' : 'off'}, ${s.ps.playing ? 'playing' : 'stopped'}, volume ${s.ps.volume ?? 4} of 5. Share line: ${shareLine(s.ps.view.code)} (techno v${VERSION})` }
   })
 
   // Remember what the user asked, for the pane. While music plays, tell Claude about it.
@@ -357,6 +359,7 @@ export function register(on) {
       playing: !!ps?.playing,
       auto: !!ps?.auto,
       fav: !!ps?.fav,
+      volume: ps?.volume ?? 4,
       nextIn,
       where,
       editOpen: s.editOpen,
@@ -386,6 +389,7 @@ export function register(on) {
       skip: go({ op: 'skip' }),
       prev: go({ op: 'prev' }),
       fav: go({ op: 'fav' }),
+      volume: (level) => cmd($, { op: 'volume', level }),
       toggleFav: (code) => cmd($, { op: 'fav', code }),
       mood: (name) => cmd($, { op: 'jam', mood: name }),
       dice: go({ op: 'dice' }),

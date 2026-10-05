@@ -1,6 +1,6 @@
 # README media
 
-How `media/deck.gif`, `media/late-night-deploy-drop-1.mp3` and the README videos were made. The deck video is drawn from the engine's own grid data, frame by frame, in sync with the rendered audio (the session cannot capture the screen).
+How `media/late-night-deploy-drop-1.mp3` and the README video were made. The deck video is drawn from the engine's own grid data, frame by frame, in sync with the rendered audio (the session cannot capture the screen).
 
 ```bash
 D=/tmp/techno-media && mkdir -p $D
@@ -9,4 +9,4 @@ node -e "import('./hooks/engine.js').then(E=>{const t=E.trackFor('late night dep
 python3 scripts/readme-media/deck-video.py $D $D/deck-playing.mp4
 ```
 
-The GIF is 4 bars of drop 1 cut from that video (ffmpeg, 15 fps, 900 px, 64 colors). GitHub plays a video inline only from an upload on github.com (a `user-attachments` link).
+GitHub plays a video inline only from an upload on github.com (a `user-attachments` link).

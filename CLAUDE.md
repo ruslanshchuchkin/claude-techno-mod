@@ -58,6 +58,16 @@ node 20 or later. Public at https://github.com/ruslanshchuchkin/claude-techno-mo
   that line from `daemon.out` and shows it in the band. `git clone` sets no
   quarantine flag, so Gatekeeper lets the binary run. Option C waits until
   people ask for it.
+- **0.9.5: the volume, option B** (picked from A a − / + stepper in the bottom
+  line, B blocks in the top line, C only through Claude; Ruslan: "B but remove
+  dark and 132 bpm - it doesn't belong here, move it down"). `volume()` in
+  views.js: 🔉 (mute, and back to 4) and five blocks after ↗, in the deck and
+  the bar. The mood and the bpm left the top line; the bpm sits after the mood
+  buttons in the bottom line. The player keeps `volume` 0..5 (saved, default
+  4) and sends the helper `{ op: 'volume', level }` as a gain on its own
+  (`VOLUME` = 0, 0.125, 0.25, 0.5, 1, 1.41: about 6 dB a step); the helper
+  ramps to it over about 20 ms, so a change never clicks. The jam tool takes
+  `volume` 0..5 ("quieter" is one step down).
 - **0.9.4: ↗ beside ♡ copies the play line** (picked from A in the bottom
   line, B beside the heart, C a click on the name; Ruslan: "i can't see share
   button on a track"). It sits in `transport()`, so the bar has it too. The
@@ -85,8 +95,9 @@ node 20 or later. Public at https://github.com/ruslanshchuchkin/claude-techno-mo
   `screencapture` gives a black image (no Screen Recording permission), so
   `scripts/readme-media/deck-video.py` draws the deck from the engine's grid
   per bar, in sync with the audio: the riser, then drop 1 at 0:05. The README
-  top is `media/deck.gif` (silent, moves without a click), then that video
-  (`user-attachments/assets/bd6b2148-...`). Rebuild both after a deck change:
+  top is that video only (`user-attachments/assets/905503cd-...`, 0.9.5
+  layout); Ruslan: "just keep the video, it already shows the first frame",
+  so no GIF. Rebuild and upload it again after a deck change:
   `scripts/readme-media/README.md`.
 - **The README demo**: the waveform mp4 plays inline (uploaded 2026-10-05 as
   `user-attachments/assets/187aec4d-...`: a file dropped into a new issue box

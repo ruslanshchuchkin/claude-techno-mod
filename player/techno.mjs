@@ -53,6 +53,8 @@ const st = {
   favorites: Array.isArray(saved.favorites) ? saved.favorites : [],
   history: Array.isArray(saved.history) ? saved.history : [],
   pool: Array.isArray(saved.pool) ? saved.pool : [],
+  // 0 is mute, 4 the old fixed level, 5 about 3 dB over it
+  volume: Number.isInteger(saved.volume) && saved.volume >= 0 && saved.volume <= 5 ? saved.volume : 4,
   imported: !!saved.imported,
   said: '',
   rev: 1,
@@ -63,7 +65,7 @@ function persist() {
   st.rev++
   clearTimeout(saveTimer)
   saveTimer = setTimeout(() => {
-    const data = { auto: st.auto, playlist: st.playlist, favorites: st.favorites, history: st.history.slice(-30), pool: st.pool.slice(-40), imported: st.imported, track: E.encodeCode(cursor.set.track) }
+    const data = { auto: st.auto, playlist: st.playlist, favorites: st.favorites, history: st.history.slice(-30), pool: st.pool.slice(-40), imported: st.imported, volume: st.volume, track: E.encodeCode(cursor.set.track) }
     fs.writeFileSync(STATE_FILE, JSON.stringify(data, null, 1))
   }, 400)
 }
@@ -114,6 +116,9 @@ function buildHelper() {
 let helper = null
 let helperBuf = ''
 function send(msg) { if (helper) helper.stdin.write(JSON.stringify(msg) + '\n') }
+// the volume steps, as a gain on the helper's own: about 6 dB apart
+const VOLUME = [0, 0.125, 0.25, 0.5, 1, 1.41]
+const sendVolume = () => send({ op: 'volume', level: VOLUME[st.volume] })
 
 function startHelper() {
   helper = spawn(BIN, [], { stdio: ['pipe', 'pipe', 'pipe'] })
@@ -481,6 +486,10 @@ function command(c) {
       if (typeof c.phrase === 'string' && c.phrase && !st.pool.includes(c.phrase)) st.pool = [...st.pool, c.phrase].slice(-40)
       break
     }
+    case 'volume': {
+      if (Number.isInteger(c.level) && c.level >= 0 && c.level <= 5) { st.volume = c.level; sendVolume() }
+      break
+    }
     case 'quit': quit('asked by a chat'); break
   }
   persist()
@@ -496,7 +505,7 @@ function stateOut() {
   if (st.playing && st.auto && s?.t) nextInMs = Math.max(0, s.t + barMs - now) + (7 - v.bar) * barMs + (v.loopsLeft - 1) * 8 * barMs
   const fav = st.favorites.some((f) => f.code === v.id)
   const recent = [...st.history].reverse().slice(0, 8).map((c) => { const t = E.parseCode(c); return t ? labelOf(t) : null }).filter(Boolean)
-  return { version: VERSION, rev: st.rev, now, playing: st.playing, auto: st.auto, playlist: st.playlist, view: v, barStartedAt: s?.t ?? 0, barMs, stepMs: barMs / 16, nextInMs, fav, favorites: st.favorites, recent, said: st.said, canUndo: undos.length > 0 }
+  return { version: VERSION, rev: st.rev, now, playing: st.playing, auto: st.auto, playlist: st.playlist, view: v, barStartedAt: s?.t ?? 0, barMs, stepMs: barMs / 16, nextInMs, fav, favorites: st.favorites, recent, said: st.said, canUndo: undos.length > 0, volume: st.volume }
 }
 
 // ---------- the socket ----------
@@ -517,7 +526,7 @@ function quit(why) {
   quitting = true
   log('quit: ' + why)
   clearTimeout(saveTimer)
-  try { fs.writeFileSync(STATE_FILE, JSON.stringify({ auto: st.auto, playlist: st.playlist, favorites: st.favorites, history: st.history.slice(-30), pool: st.pool.slice(-40), imported: st.imported, track: E.encodeCode(cursor.set.track) }, null, 1)) } catch { /* best effort */ }
+  try { fs.writeFileSync(STATE_FILE, JSON.stringify({ auto: st.auto, playlist: st.playlist, favorites: st.favorites, history: st.history.slice(-30), pool: st.pool.slice(-40), imported: st.imported, volume: st.volume, track: E.encodeCode(cursor.set.track) }, null, 1)) } catch { /* best effort */ }
   send({ op: 'quit' })
   server.close()
   try { fs.unlinkSync(SOCK) } catch { /* gone */ }
@@ -540,6 +549,7 @@ try { fs.unlinkSync(SOCK) } catch { /* none */ }
 try { execFileSync('pkill', ['-f', 'ffplay .*Library/Caches/techno/loop-']) } catch { /* none running */ }
 buildHelper()
 startHelper()
+sendVolume()
 server.listen(SOCK, () => log('listening, pid ' + process.pid))
 for (const sig of ['SIGTERM', 'SIGINT', 'SIGHUP']) process.on(sig, () => quit(sig))
 

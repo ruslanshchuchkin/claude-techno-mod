@@ -11,7 +11,7 @@
 
 </div>
 
-https://github.com/user-attachments/assets/702a8aef-8734-4860-b205-844be5f1b3eb
+https://github.com/user-attachments/assets/46ea094d-1790-4cb2-94a0-cd0940f2e1a9
 
 <p align="center"><sub>🔊 <b>Now with sound.</b> The riser, then drop 1 lands at 0:05 and says its name · no player? <a href="https://cdn.jsdelivr.net/gh/ruslanshchuchkin/claude-techno-mod@main/media/late-night-deploy-drop-1.mp3">play the mp3</a></sub></p>
 

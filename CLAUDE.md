@@ -37,7 +37,7 @@ node 20 or later. Public at https://github.com/ruslanshchuchkin/claude-techno-mo
 | `player/bin/TechnoPlayer` | The prebuilt helper: one universal binary (arm64 and x86_64, ad-hoc signed), so a new user needs no Xcode tools. `TechnoPlayer.sha1` beside it is the sha1 of the Swift source it came from. |
 | `scripts/build-helper.mjs` | Builds `player/bin/` from `TechnoPlayer.swift`. Run it after every change to the Swift file; smoke fails until you do. |
 | `README.md`, `LICENSE` | The public front page (its own voice, not STE) and the MIT license. |
-| `docs/tasks/` | Hand-off tasks for another agent, one file each, with the steps and the checks. Open: `readme-demo-usual-voice.md` (the README demo with the app's own voice, not a clear voice-over). |
+| `docs/tasks/` | Hand-off tasks for another agent, one file each, with the steps and the checks. Done: `readme-demo-usual-voice.md` (the README demo with the app's own voice, 2026-10-05). |
 | `media/late-night-deploy-drop-1.mp3` | The 29 s demo the README links: the riser into drop 1 of `late-night-deploy@133m0e2k2`. |
 
 ## Decisions
@@ -131,11 +131,13 @@ node 20 or later. Public at https://github.com/ruslanshchuchkin/claude-techno-mo
   `screencapture` gives a black image (no Screen Recording permission), so
   `scripts/readme-media/deck-video.py` draws the deck from the engine's grid
   per bar, in sync with the audio: the riser, then drop 1 at 0:05. The README
-  top is that video only (now `702a8aef-...`, the 0.9.9 layout, with a
-  "Claude. Techno. Mod." voice-over said once, by Daniel on the drop, the
-  music ducked under it; Ruslan: "repeated twice ... make it only once". The
-  demo audio has no engine voice layer, which was too buried to understand); Ruslan: "just keep the video, it already shows the first frame",
-  so no GIF. Rebuild and upload it again after a deck change:
+  top is that video only (now `46ea094d-...`, the 0.9.9 layout). The demo
+  uses the engine's own voice layer, as the app plays it: the line "claude
+  techno mod", said once, deep (Daniel) on bar 1 of the drop, low under the
+  music, with no clear voice-over on top (Ruslan: "the voice is not how it
+  appears usually, make it like it appears usually"; an earlier clear
+  Daniel voice-over with the music ducked is gone). Ruslan: "just keep the
+  video, it already shows the first frame", so no GIF. Rebuild and upload it again after a deck change:
   `scripts/readme-media/README.md`.
 - **The README demo**: the waveform mp4 plays inline (uploaded 2026-10-05 as
   `user-attachments/assets/187aec4d-...`: a file dropped into a new issue box

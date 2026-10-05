@@ -52,7 +52,7 @@ Already inside a `claude` session in the terminal? You can paste the same two st
 ## What you see
 
 ```
-⏮ ■ stop ⏭  late night deploy ♡ · dark · 133 bpm                ● auto  hide
+⏮ ■ stop ⏭  late night deploy ♡ ↗ · dark · 133 bpm              ● auto  hide
 ▰▰▰▰▰▰▰▰▰▰▰▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱  drop 1  2:38 / 6:29
        1  ·  ·  ·   2  ·  ·  ·   3  ·  ·  ·   4  ·  ·  ·
 kick   ██ ░░ ░░ ░░  ██ ░░ ░░ ░░  ██ ░░ ░░ ░░  ██ ░░ ░░ ░░
@@ -63,7 +63,7 @@ clap   ░░ ░░ ░░ ░░  ██ ░░ ░░ ░░  ░░ ░░ �
 mood  sad  mysterious  [dark]   edit   ♥ favorites 4
 ```
 
-The top line is the transport and the track. The bar under it is the whole song, one block per 15 seconds. The grid is the loop that plays now: click a cell to add or remove a hit, click a sound's name to mute it.
+The top line is the transport and the track (♡ keeps it, ↗ copies its share line). The bar under it is the whole song, one block per 15 seconds. The grid is the loop that plays now: click a cell to add or remove a hit, click a sound's name to mute it.
 
 ## Play
 
@@ -80,7 +80,7 @@ The top line is the transport and the track. The bar under it is the whole song,
 
 **Three moods**, the three that techno does: **sad**, **mysterious**, **dark**. A mood picks the scale, the tempo and the energy together.
 
-**Your session is the playlist.** When a track ends, auto picks the next one from your work: the project folder, the git branch and your last commit messages each become a track. Your `fix flaky login test` commit gets its own drop.
+**Your work is the playlist.** When a track ends, auto picks the next one from what you do: the project folder, the git branch, your last commit messages, and the key words of your prompts, from every chat. Ask Claude *"why does the stripe webhook retry twice on staging"* and a track called **stripe webhook staging** joins the queue. Only plain words get in: never paths, links, emails, numbers or anything that looks like a key.
 
 **♡** keeps a track in your favorites. Play them one after another, or copy a line to send to a friend.
 
@@ -92,7 +92,7 @@ A whole track, with your edits, fits in one line:
 /techno late-night-deploy@133m0e4k2a5
 ```
 
-To get it, ask Claude *"share this track"*, or open **edit** and press **↗ share** (it copies the line and saves a one-minute mp3 to `~/Music/techno`). A friend pastes the line into their chat and hears exactly the same track, because the code *is* the track.
+Press **↗** next to the ♡ and the line is on your clipboard. A friend pastes it into their chat and hears exactly the same track, because the code *is* the track. Want the audio too? **edit → ↓ mp3** saves a one-minute mp3 to `~/Music/techno`.
 
 ## How the sound is made
 

@@ -476,6 +476,11 @@ function command(c) {
       }
       break
     }
+    // words from a chat's prompt (hooks/words.js): a phrase auto may pick
+    case 'words': {
+      if (typeof c.phrase === 'string' && c.phrase && !st.pool.includes(c.phrase)) st.pool = [...st.pool, c.phrase].slice(-40)
+      break
+    }
     case 'quit': quit('asked by a chat'); break
   }
   persist()

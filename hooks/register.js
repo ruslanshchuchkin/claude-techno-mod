@@ -10,11 +10,12 @@
 // /techno stop | save | code
 import { parseCode, encodeCode, describe, render, toWav, grid, activeLayers, cleanTrack, soundInfo, planOf, planAdds, LAYERS, GRID_LAYERS, PLAN, VIBES, BPM_MIN, BPM_MAX } from './engine.js'
 import { appView, miniView } from './views.js'
+import { keyWords } from './words.js'
 
 const TOOL = 'mcp__techno__jam'
 // The plugin version: in the jam tool's answer, and the player of an older
 // version is replaced by this one. Keep it equal to plugin.json (a test checks).
-const VERSION = '0.9.3'
+const VERSION = '0.9.4'
 // [accent, normal] fill of a hit in the step grid
 const LAYER_COLORS = {
   kick: ['#e85a5a', '#c94040'],
@@ -160,7 +161,7 @@ async function copyLine($, code) {
   try { ok = (await $.ui.copy({ text: shareLine(code) }))?.isCopied !== false } catch {
     try { ok = (await $.process.run(['pbcopy'], { stdin: shareLine(code), timeoutMs: 5000 })).exitCode === 0 } catch { /* no clipboard */ }
   }
-  s.status = ok ? 'play line copied: ' + shareLine(code) : shareLine(code)
+  s.status = ok ? '✓ copied: ' + shareLine(code) : shareLine(code)
   if (!s.isOpen) $.ui.toast(s.status)
   $.ui.invalidate('ui.render')
 }
@@ -250,7 +251,7 @@ export function register(on) {
         },
       },
     })
-    await $.command.register({ name: 'techno', description: 'Show or hide the techno app', argumentHint: '[phrase or share code | stop | save | code]', immediate: true })
+    await $.command.register({ name: 'techno', description: 'Show or hide the techno app', argumentHint: '[phrase or share code]', immediate: true })
     // The player may take a while (its first start compiles the helper app):
     // the command and the tool are there at once, the player comes up behind.
     void (async () => {
@@ -305,6 +306,9 @@ export function register(on) {
   // Remember what the user asked, for the pane. While music plays, tell Claude about it.
   on('prompt.submit', async ($, e, next) => {
     s.lastPrompt = String(e.text ?? '').replace(/\s+/g, ' ').trim().slice(0, 80)
+    // the prompt's key words join the tracks auto picks; never starts the player
+    const words = keyWords(e.text)
+    if (words) await ask($, { op: 'words', phrase: words }).catch(() => {})
     if (!s.ps?.playing) return next(e)
     const note = `The techno mod is playing in the user's techno pane: ${describeNow()}, auto ${s.ps.auto ? 'on' : 'off'}. If this prompt is about the music, change it with the ${TOOL} tool and reply in one short line.`
     return next({ ...e, context: [...(e.context ?? []), note] })

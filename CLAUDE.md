@@ -23,6 +23,7 @@ node 20 or later. Public at https://github.com/ruslanshchuchkin/claude-techno-mo
 | `hooks/package.json` | `"type": "module"`, so node 20 runs the player (it imports `engine.js`). |
 | `hooks/register.js` | The chat side: a remote control for the player. Starts the player when none (or an older one) answers, polls its state every second, `/techno` command, `jam` tool, save and share. Every `$` call lives here (the validator refuses `$` passed to imported files). |
 | `hooks/views.js` | The app's screens as pure functions of `(ui, vm, act)`: the deck (layout A with the skyline), the edit card (layout B), favorites (with the tracks heard before), new track, and the bar shown while the app is hidden. |
+| `hooks/words.js` | Pure: `keyWords(prompt)`, the 2 or 3 plain words of a prompt that become a track auto may pick. |
 | `hooks/grid.client.js` | A `Client` surface module: the step sequencer with its own playhead clock. Colors of empty cells and the playhead are theme keys (`subtle`, `text`), so it reads in light and dark. A click on a row name posts `{ toggle: layer }`; a click on a cell posts `{ step, layer }`. |
 | `hooks/engine.js` | The synth, `PLAN` (the set), `HANDOVER`, `render` (a folded loop, for mp3s), `renderLoop` (a loop with its tail, for the stream, optionally mixed with a second track). Plain JS with no Node or browser APIs. |
 | `hooks/conductor.js` | Pure: what each loop of a set plays (`loopSpec`), how auto moves on (`afterLoop`, `stepOn`), and the `mixer` that cuts loops into bars and carries the tails. Shared by the player and the scripts. |
@@ -57,6 +58,18 @@ node 20 or later. Public at https://github.com/ruslanshchuchkin/claude-techno-mo
   that line from `daemon.out` and shows it in the band. `git clone` sets no
   quarantine flag, so Gatekeeper lets the binary run. Option C waits until
   people ask for it.
+- **0.9.4: ↗ beside ♡ copies the play line** (picked from A in the bottom
+  line, B beside the heart, C a click on the name; Ruslan: "i can't see share
+  button on a track"). It sits in `transport()`, so the bar has it too. The
+  edit card's old "↗ share" is now "↓ mp3" (it saves the mp3 and copies the
+  line): one word for one meaning. `/techno stop | save | code` still work but
+  are out of the README and the command hint.
+- **0.9.4: chat words** (Ruslan picked "key words, on"). `keyWords()` in
+  `hooks/words.js` takes the 2 or 3 longest plain words of a prompt (no common
+  or music words, paths, links, emails, digits, SHOUTED keys; fewer than 2
+  words gives nothing). `prompt.submit` sends `{ op: 'words', phrase }` with
+  `ask` only, so a prompt never starts the player. The player keeps them in
+  `pool` (the last 40, shared by every chat) beside the repo names.
 - **The master, measured** (2026-10-05, Ruslan: "does auto apply mastering
   as well? ... not disturbing"). A whole auto set as the helper plays it
   (gain 0.7): -14.4 LUFS integrated, LRA 2.8 LU, true peak -2.9 dBFS,

@@ -2,6 +2,7 @@ import { expect, mock, test } from 'claude-code/testing'
 import { atPart, encodeCode, parseCode, toggleStep, trackFor, moodName, withVibe, activeLayers, transitionsOf, editTrack, planOf, planAdd, grid, soundInfo, INSTRUMENTS, PLAN, HANDOVERS, HANDOVER_LOOPS, BUILDS, FALLS } from '../hooks/engine.js'
 import { newSet, loopSpec, afterLoop, stepOn, posOf } from '../hooks/conductor.js'
 import { partBar } from '../hooks/views.js'
+import { keyWords } from '../hooks/words.js'
 
 // What Claude Code passes to the band's ui.render hook, apart from the app
 const PANE = {
@@ -117,7 +118,7 @@ test('the deck: play, the track and its mood, previous, favorite, auto; mood, ne
   await $.command.run({ command: 'techno', args: '' })
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ ...PANE, surface })
-    for (const key of ['play', 'skip', 'fav', 'auto', 'where', 'grid', 'mood-sad', 'mood-mysterious', 'mood-dark', 'edit', 'favorites']) expect(await ui.find({ key })).toBeDefined()
+    for (const key of ['play', 'skip', 'fav', 'share', 'auto', 'where', 'grid', 'mood-sad', 'mood-mysterious', 'mood-dark', 'edit', 'favorites']) expect(await ui.find({ key })).toBeDefined()
     // auto is on: the set moves by itself, so there is no next part button
     expect(await ui.find({ key: 'next' })).toBeUndefined()
     expect((await ui.find({ key: 'auto' }))?.props.variant).toBe('primary')
@@ -141,7 +142,24 @@ test('the deck: play, the track and its mood, previous, favorite, auto; mood, ne
   expect(await ui.find({ key: 'melody' })).toBeUndefined()
   await ui.press({ key: 'fav' })
   expect((await ui.find({ key: 'fav' }))?.props.label).toBe('♥')
+  // ↗ beside the heart copies the play line and says so under the deck
+  await ui.press({ key: 'share' })
+  expect((await ui.find({ text: /✓ copied/ }))?.text).toContain('✓ copied: /techno ' + encodeCode(player.set.track))
   await ui.unmount()
+})
+
+test('chat words: a prompt gives its key words to the player, never a path, a key or a music request', async ($, on) => {
+  const { player } = stubs(on)
+  await start($)
+  await $.prompt.submit({ text: 'why does the stripe webhook retry twice on staging', asUser: true })
+  expect(player.cmds.filter((c: any) => c.op === 'words').map((c: any) => c.phrase)).toEqual(['stripe webhook staging'])
+  // a prompt alone never starts the music
+  expect(player.cmds.some((c: any) => c.op === 'play' || c.op === 'pick')).toBe(false)
+  expect(keyWords('make it darker')).toBeNull()
+  expect(keyWords('/techno late night deploy')).toBeNull()
+  expect(keyWords('fix src/auth/login.ts line 42')).toBeNull()
+  expect(keyWords('my key is sk-ant-abc123XYZ, mail it to me@example.com')).toBe('key mail')
+  expect(keyWords('make the onboarding carousel less noisy')).toBe('onboarding carousel noisy')
 })
 
 test('the favorites screen plays a favorite and lists the tracks heard before', async ($, on) => {

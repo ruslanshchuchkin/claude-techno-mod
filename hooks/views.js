@@ -33,6 +33,7 @@ function transport(ui, vm, act, prefix) {
     ui.Button({ key: prefix + 'skip', label: '⏭', onPress: () => act.skip() }),
     ui.Text({ bold: true, wrap: 'truncate-end', children: [v.phrase] }),
     ui.Button({ key: prefix + 'fav', label: vm.fav ? '♥' : '♡', plain: true, onPress: () => act.fav() }),
+    ui.Button({ key: prefix + 'share', label: '↗', plain: true, onPress: () => act.copy() }),
     dim(ui, '· ' + v.mood + ' · ' + v.bpm + ' bpm'),
   ]
 }
@@ -121,7 +122,7 @@ function editTabs(ui, vm, act) {
     toggle(ui, 'tab-master', 'master', vm.editTab === 'master', () => act.editTab('master')),
   ], [
     vm.canUndo ? ui.Button({ key: 'undo', label: '↶ undo', onPress: () => act.undo(), hotkey: 'u' }) : null,
-    ui.Button({ key: 'share', label: '↗ share', onPress: () => act.share() }),
+    ui.Button({ key: 'save-mp3', label: '↓ mp3', onPress: () => act.share() }),
     ui.Button({ key: 'edit-done', label: 'done', onPress: () => act.edit() }),
   ], 'edit-tabs')
 }

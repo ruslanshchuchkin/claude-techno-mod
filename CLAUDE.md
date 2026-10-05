@@ -37,6 +37,7 @@ node 20 or later. Public at https://github.com/ruslanshchuchkin/claude-techno-mo
 | `player/bin/TechnoPlayer` | The prebuilt helper: one universal binary (arm64 and x86_64, ad-hoc signed), so a new user needs no Xcode tools. `TechnoPlayer.sha1` beside it is the sha1 of the Swift source it came from. |
 | `scripts/build-helper.mjs` | Builds `player/bin/` from `TechnoPlayer.swift`. Run it after every change to the Swift file; smoke fails until you do. |
 | `README.md`, `LICENSE` | The public front page (its own voice, not STE) and the MIT license. |
+| `docs/tasks/` | Hand-off tasks for another agent, one file each, with the steps and the checks. Open: `readme-demo-usual-voice.md` (the README demo with the app's own voice, not a clear voice-over). |
 | `media/late-night-deploy-drop-1.mp3` | The 29 s demo the README links: the riser into drop 1 of `late-night-deploy@133m0e2k2`. |
 
 ## Decisions

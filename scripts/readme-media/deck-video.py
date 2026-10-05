@@ -71,7 +71,10 @@ def frame(t):
     c = button(dr, c + 1, 0, '■ stop', False)
     c = skip_icon(dr, c, 0, False)
     c = text(dr, c + 2, 0, 'late night deploy', TEXT, FB)
-    c = text(dr, c + 1, 0, '♡ ↗', TEXT)
+    c = text(dr, c + 1, 0, '♡', TEXT)
+    x, y = col(c + 2) - 9, Y0 + 24 - 4  # share: a bordered button
+    dr.rounded_rectangle([x, y, x + 5 * CW + 18, y + 32], 6, outline=DIM, width=2)
+    c = text(dr, c + 2, 0, 'share', TEXT) + 1
     c = text(dr, c + 2, 0, 'vol', DIM)  # the volume: vol − 80% +
     c = text(dr, c + 1, 0, '−', TEXT)
     c = text(dr, c + 1, 0, '80%', TEXT, FB)

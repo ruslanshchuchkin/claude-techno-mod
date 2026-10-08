@@ -16,7 +16,7 @@ import { CLASSICS } from './classics.js'
 const TOOL = 'mcp__techno__jam'
 // The plugin version: in the jam tool's answer, and the player of an older
 // version is replaced by this one. Keep it equal to plugin.json (a test checks).
-const VERSION = '0.9.10'
+const VERSION = '0.9.11'
 // [accent, normal] fill of a hit in the step grid
 const LAYER_COLORS = {
   kick: ['#e85a5a', '#c94040'],

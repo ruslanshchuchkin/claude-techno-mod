@@ -292,7 +292,7 @@ function crate(ui, vm, act) {
   return [
     spread(ui, [ui.Text({ bold: true, children: ['new song'] }), dim(ui, `· type a name, get a song: "${example.phrase}" plays ${example.mood}, ${example.bpm} bpm`, { wrap: 'truncate-end' })], [link(ui, 'back', '‹ back', () => act.screen('deck'))], 'crate-top'),
     ui.Input({ key: 'phrase', label: 'name', placeholder: 'type any name…', value: '', submitLabel: 'play', onSubmit: (v) => act.phrase(v) }),
-    ui.Box({ key: 'lists', flexDirection: 'row', flexWrap: 'wrap', columnGap: 4, marginTop: 1, children: [
+    ui.Box({ key: 'lists', flexDirection: 'row', flexWrap: 'wrap', columnGap: 4, children: [
       chats.length ? col(ui, [dim(ui, 'or press a number · your recent chats', { key: 'chats-head' }), ...chatRows], { key: 'chats', width: '58%', minWidth: 34, flexGrow: 1 }) : null,
       col(ui, [
         ui.Box({ key: 'classics-head', flexDirection: 'row', columnGap: 2, children: [dim(ui, chats.length ? 'classics' : 'or press a number · classics'), link(ui, 'classics-more', '⚄ others', () => act.moreClassics())] }),

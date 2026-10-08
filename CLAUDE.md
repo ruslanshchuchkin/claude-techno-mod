@@ -200,6 +200,15 @@ node 20 or later. Public at https://github.com/ruslanshchuchkin/claude-techno-mo
   (Claude runs in the cloud); the mark is a 4x4 step grid, never a
   Claude-like spark, and the end card says "a fan-made mod". The first
   cut (option A, "say darker", square 45 s) was rejected: "i don't like it".
+  v2 (2026-10-08: "some things are too quick and i can't read them. make
+  video shorter. i also don't like 'hi, i'm a developer' ... claude sessions
+  are boring, hard to lock in - need to open spotify"): 45 s (25 bars). The
+  problem is three cards: "Claude is thinking. Again." / "To lock in, you
+  open Spotify." (one ad notification) / "20 minutes later: still picking a
+  playlist." A card has at most about six words, lands in its first two
+  beats and holds 2 bars or more. Openers are a prop (`deadpan` default,
+  `nature`, `trailer`; seeds `TTpGAJjzy6sig9D`, `TkWQkIs780C36Fo`,
+  `j2IqxyDIwhbKAUQ`).
 - **README voice**: its own voice (playful, not STE), a stars badge, one star
   line under the pitch and one in the footer.
 - **The web page with a player is parked** ("for now let's focus not on web

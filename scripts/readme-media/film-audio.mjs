@@ -34,7 +34,7 @@ const find = (fn) => loops.findIndex(fn)
 const last = (part) => loops.findLastIndex((l) => !l.handover && l.part === part)
 // the montage: [loop index, first bar, bars, the film's section]
 const SEGMENTS = [
-  [last(4), 2, 6, 'problems'],                            // the last 6 bars of the riser into drop 1
+  [last(4), 4, 4, 'problems'],                            // the last 4 bars of the riser into drop 1: the hook, quiet
   [find((l) => l.part === 5), 0, 4, 'reveal'],            // drop 1
   [last(8), 2, 4, 'voice'],                               // breakdown 2, from the whisper
   [find((l) => l.part === 9), 0, 4, 'auto'],              // drop 3: the deep voice on bar 1

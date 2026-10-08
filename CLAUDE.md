@@ -209,6 +209,15 @@ node 20 or later. Public at https://github.com/ruslanshchuchkin/claude-techno-mo
   beats and holds 2 bars or more. Openers are a prop (`deadpan` default,
   `nature`, `trailer`; seeds `TTpGAJjzy6sig9D`, `TkWQkIs780C36Fo`,
   `j2IqxyDIwhbKAUQ`).
+  v3 (2026-10-08: "don't like any of the hooks ... (while music playing
+  quietly) using claude code and running the same spotify playlist from
+  2019?", then "make the hook in that direction. and make only horizontal
+  video"): the three openers are gone. The hook is one card over the last 4
+  bars of the riser at about -13 dB, then it swells into drop 1. Lines in
+  `HOOKS` (`hook` prop): a "Claude Code in 2026. Same Spotify playlist from
+  2019." (default), b "Your agent ships in minutes. Your playlist is from
+  2019.", c "Claude writes the code. You skip track 7. Again." 41.5 s.
+  Ruslan gets the 16:9 film only (`TechnoLaunchWide`).
 - **README voice**: its own voice (playful, not STE), a stars badge, one star
   line under the pitch and one in the footer.
 - **The web page with a player is parked** ("for now let's focus not on web

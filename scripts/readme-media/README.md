@@ -27,3 +27,15 @@ python3 scripts/readme-media/launch-video.py $D $D/techno-mod-launch.mp4 3.0,9.6
 ```
 
 The third argument saves stills (`$D/launch-<t>.png`). Pass `-` as the output to draw only the stills. The claims are `CLAIMS` in `launch-video.py`.
+
+## The launch film
+
+The launch film replaced the cut above. It is a Remotion composition in `~/Documents/video-studio` (`TechnoLaunch` square, `TechnoLaunchWide` 16:9). This repo makes its audio and its bar data:
+
+```bash
+D=/tmp/techno-film && mkdir -p $D
+node scripts/readme-media/film-audio.mjs "deep focus" "ship it" $D
+cp $D/film.wav ~/Documents/video-studio/public/techno/
+cp $D/film.json ~/Documents/video-studio/src/profiles/techno/
+cd ~/Documents/video-studio && npx remotion render src/index.ts TechnoLaunch out/techno/TechnoLaunch.mp4
+```

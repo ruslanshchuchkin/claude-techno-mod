@@ -40,7 +40,8 @@ node 20 or later. Public at https://github.com/ruslanshchuchkin/claude-techno-mo
 | `README.md`, `LICENSE` | The public front page (its own voice, not STE) and the MIT license. |
 | `docs/tasks/` | Hand-off tasks for another agent, one file each, with the steps and the checks. Done: `readme-demo-usual-voice.md` (the README demo with the app's own voice, 2026-10-05). |
 | `media/late-night-deploy-drop-1.mp3` | The 29 s demo the README links: the riser into drop 1 of `late-night-deploy@133m0e2k2`. |
-| `scripts/readme-media/launch-audio.mjs`, `launch-video.py` | The square 45 s launch video: the audio as the player plays a mood change, then the deck, the chat and the typed claims drawn per frame. Steps in `scripts/readme-media/README.md`. |
+| `scripts/readme-media/launch-audio.mjs`, `launch-video.py` | The first launch cut (option A, replaced by the film below; kept for its mood-change audio). |
+| `scripts/readme-media/film-audio.mjs` | The audio of the launch film: a montage of real loops of one auto set ("deep focus" into "ship it"), cut on bar lines, the engine's own voice lines with the music dipped under them, and `film.json` (every bar). The film itself is the `TechnoLaunch` composition in `~/Documents/video-studio`. |
 
 ## Decisions
 
@@ -182,13 +183,23 @@ node 20 or later. Public at https://github.com/ruslanshchuchkin/claude-techno-mo
   crest about 10.7 dB; the 2.5 kHz band sits 21 dB under the sub. No change
   needed; the README says it. Measure again with `ffmpeg -i set.wav -af
   "volume=0.7,ebur128=peak=true" -f null -` after a change to the master.
-- **The launch video, option A "say darker"** (Ruslan, 2026-10-08; picked
-  from A square 45 s, B wide 60 s "2 am silent vs. with it", C vertical
-  30 s; seeds `3qYRFYCnDO0H7TG`, `QzTgvmKpjZtUima`, `o01Q6D179oRi3Qw`;
-  ending: the GitHub star, not the install line). 1080x1080, 45 s. The
-  riser plays in sad, "darker" is typed, the jam lands on the next bar
-  (0:04), drop 1 at 0:09, four typed claims of 4 bars each, then "Star it
-  on GitHub". Drawn, not recorded, like the README video.
+- **The launch film, concept B "developers anonymous"** (Ruslan, 2026-10-08:
+  "make it like a product launch. state problem (come up with funny ones),
+  do some motion graphics"; then "B, make it more about VIBES and DEEP
+  FOCUS ... the fact that you can update the song by typing command is not
+  the killer feature ... killer feature is that all sounds are generated on
+  your computer, even voice lines. IT NEVER STOPS is also cool. Auto builds
+  tracks ... claude IS the DJ"; seeds A `OGAiqaxWm4q4X6e`, B
+  `I7dJnXzXeLYlnuI`, C `XNBn6Y6VWrECUjy`). Remotion, in video-studio
+  (`src/profiles/techno/TechnoLaunch.tsx`): `TechnoLaunch` 1080x1080 and
+  `TechnoLaunchWide` 1920x1080, 70 s, music only. A confession over the
+  riser, the logo forms from step-grid cells on drop 1, every sound made on
+  your Mac (even the voice: the music dips under the engine's whisper and
+  deep voice so a viewer hears them), Auto builds the set, it never stops,
+  Claude is the DJ, then "Star it on GitHub". No "cloud" or "offline" claim
+  (Claude runs in the cloud); the mark is a 4x4 step grid, never a
+  Claude-like spark, and the end card says "a fan-made mod". The first
+  cut (option A, "say darker", square 45 s) was rejected: "i don't like it".
 - **README voice**: its own voice (playful, not STE), a stars badge, one star
   line under the pitch and one in the footer.
 - **The web page with a player is parked** ("for now let's focus not on web

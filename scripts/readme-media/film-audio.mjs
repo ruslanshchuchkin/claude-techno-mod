@@ -34,12 +34,12 @@ const find = (fn) => loops.findIndex(fn)
 const last = (part) => loops.findLastIndex((l) => !l.handover && l.part === part)
 // the montage: [loop index, first bar, bars, the film's section]
 const SEGMENTS = [
-  [last(4), 0, 8, 'problems'],                            // the riser into drop 1
-  [find((l) => l.part === 5), 0, 8, 'reveal'],            // drop 1
-  [last(8), 1, 7, 'voice'],                               // breakdown 2: the whisper, the riser
+  [last(4), 2, 6, 'problems'],                            // the last 6 bars of the riser into drop 1
+  [find((l) => l.part === 5), 0, 4, 'reveal'],            // drop 1
+  [last(8), 2, 4, 'voice'],                               // breakdown 2, from the whisper
   [find((l) => l.part === 9), 0, 4, 'auto'],              // drop 3: the deep voice on bar 1
-  [find((l) => l.handover), 0, 8, 'never stops'],         // the handover into the next track
-  [find((l) => l.handover) + 1, 0, 4, 'star'],
+  [find((l) => l.handover), 0, 4, 'never stops'],         // the handover into the next track
+  [find((l) => l.handover), 4, 3, 'star'],
 ]
 
 const mix = mixer(), bars = [], timeline = [], renders = new Map()

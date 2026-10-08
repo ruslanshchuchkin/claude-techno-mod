@@ -34,8 +34,8 @@ The launch film replaced the cut above. It is a Remotion composition in `~/Docum
 
 ```bash
 D=/tmp/techno-film && mkdir -p $D
-node scripts/readme-media/film-audio.mjs "deep focus" "ship it" $D
+node scripts/readme-media/film-audio.mjs "deep focus" "fix login bug" $D
 cp $D/film.wav ~/Documents/video-studio/public/techno/
 cp $D/film.json ~/Documents/video-studio/src/profiles/techno/
-cd ~/Documents/video-studio && npx remotion render src/index.ts TechnoLaunch out/techno/TechnoLaunch.mp4
+cd ~/Documents/video-studio && npx remotion render src/index.ts TechnoLaunchWide out/techno/TechnoLaunchWide.mp4
 ```

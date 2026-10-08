@@ -2,7 +2,7 @@
 // cut on bar lines. The set walks as the player walks it (loopSpec, afterLoop),
 // with the engine's own voices saying the track's name (Whisper in breakdown 2,
 // Daniel on drop 3), then the handover into the next track.
-//   node scripts/readme-media/film-audio.mjs "deep focus" "ship it" out-dir
+//   node scripts/readme-media/film-audio.mjs "deep focus" "fix login bug" out-dir
 // Writes out-dir/film.wav and out-dir/film.json (one entry per bar).
 import { writeFileSync, readFileSync, rmSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
@@ -32,11 +32,12 @@ while (loops.length < 40) {
 }
 const find = (fn) => loops.findIndex(fn)
 const last = (part) => loops.findLastIndex((l) => !l.handover && l.part === part)
-// the montage: [loop index, first bar, bars, the film's section]
+// the montage: [loop index, first bar, bars, the film's section, fade-in seconds, fade-down seconds]
 const SEGMENTS = [
   [last(4), 4, 4, 'problems'],                            // the last 4 bars of the riser into drop 1: the hook, quiet
-  [find((l) => l.part === 5), 0, 4, 'reveal'],            // drop 1
-  [last(8), 2, 4, 'voice'],                               // breakdown 2, from the whisper
+  [find((l) => l.part === 5), 0, 3, 'reveal'],            // drop 1
+  [last(5), 7, 1, 'reveal', 0, 0.9],                      // drop 1's last bar: its fall (a downlifter), eased down, and its tail
+  [last(8), 2, 4, 'voice', 1.2],                          // breakdown 2, from the whisper; its music fades in under that tail
   [find((l) => l.part === 9), 0, 4, 'auto'],              // drop 3: the deep voice on bar 1
   [find((l) => l.handover), 0, 4, 'never stops'],         // the handover into the next track
   [find((l) => l.handover), 4, 3, 'star'],
@@ -44,7 +45,7 @@ const SEGMENTS = [
 
 const mix = mixer(), bars = [], timeline = [], renders = new Map()
 let t = 0
-for (const [i, first, n, film] of SEGMENTS) {
+for (const [i, first, n, film, fadeIn = 0, fadeDown = 0] of SEGMENTS) {
   const L = loops[i]
   if (!renders.has(i)) renders.set(i, renderLoop(L.spec.track, { ...L.spec, voices }))
   const r = renders.get(i)
@@ -53,6 +54,10 @@ for (const [i, first, n, film] of SEGMENTS) {
   for (let k = first; k < first + n; k++) {
     const b = mix.bar(r, k)
     const voice = on.voice ? (drop && k === 0 ? 'deep' : !drop && k === 2 ? 'whisper' : null) : null
+    // a fade-in, slow where the film asks: on a voice bar only the music fades,
+    // so the voice's first syllable stays
+    const fin = k === first ? Math.min(b.length / 2, Math.max(176, Math.round(fadeIn * 44100))) : 0
+    const rise = (j) => (j >= fin ? 1 : Math.sin((j / fin) * Math.PI / 2) ** 2)
     // the film dips the music under the engine's own voice, so a viewer hears
     // it; the voice itself is the engine's render, untouched
     if (voice) {
@@ -60,12 +65,17 @@ for (const [i, first, n, film] of SEGMENTS) {
       const dry = renders.get(-i - 1), from = Math.round((k * r.loop) / 8)
       const hold = (voice === 'deep' ? 1.3 : 1.6) * 44100
       for (let j = 0; j < b.length / 2; j++) {
-        const g = 1 - 0.65 * Math.min(1, j / 2200, Math.max(0, (hold - j) / 13000))
+        const g = (1 - 0.65 * Math.min(1, j / 2200, Math.max(0, (hold - j) / 13000))) * rise(j)
         for (const c of [0, 1]) { const m = (c ? dry.right : dry.left)[from + j]; b[j * 2 + c] -= (1 - g) * m }
       }
     }
     // a 4 ms fade at a cut, so a jump between loops never clicks
-    if (k === first) for (let j = 0; j < 176; j++) { b[j * 2] *= j / 176; b[j * 2 + 1] *= j / 176 }
+    if (k === first) for (let j = 0; j < (voice ? 176 : fin); j++) { const g = voice ? j / 176 : rise(j); b[j * 2] *= g; b[j * 2 + 1] *= g }
+    // the last bar of a segment can ease down into the next one
+    if (k === first + n - 1 && fadeDown) {
+      const m = Math.round(fadeDown * 44100), s0 = b.length / 2 - m
+      for (let j = Math.max(0, s0); j < b.length / 2; j++) { const g = 1 - 0.6 * Math.sin(((j - s0) / m) * Math.PI / 2) ** 2; b[j * 2] *= g; b[j * 2 + 1] *= g }
+    }
     if (k === first + n - 1) for (let j = 0; j < 176; j++) { const e = b.length / 2 - 1 - j; b[e * 2] *= j / 176; b[e * 2 + 1] *= j / 176 }
     bars.push(b)
     const dur = b.length / 2 / 44100

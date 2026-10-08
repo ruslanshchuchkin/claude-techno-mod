@@ -218,6 +218,15 @@ node 20 or later. Public at https://github.com/ruslanshchuchkin/claude-techno-mo
   2019." (default), b "Your agent ships in minutes. Your playlist is from
   2019.", c "Claude writes the code. You skip track 7. Again." 41.5 s.
   Ruslan gets the 16:9 film only (`TechnoLaunchWide`).
+  v4 (2026-10-08): the hook is Ruslan's line "Are you vibecoding to the
+  same Spotify playlist from 2019?" (`HOOK`, no prop). "The cut to deep
+  focus is too sudden": drop 1 now plays 3 bars, then its own last bar with
+  the fall (a downlifter) eased down over 0.9 s; its tail runs into the
+  breakdown, whose music fades in over 1.2 s while the whisper stays
+  untouched; the picture blurs and crossfades over the fall's last two
+  beats. "It never stops" now says "Tracks are based on your chats." (0.9.10:
+  auto plays your newest chat titles), and the next deck is "fix login bug ·
+  your last chat" (the film's next track).
 - **README voice**: its own voice (playful, not STE), a stars badge, one star
   line under the pitch and one in the footer.
 - **The web page with a player is parked** ("for now let's focus not on web

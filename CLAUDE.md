@@ -23,6 +23,7 @@ node 20 or later. Public at https://github.com/ruslanshchuchkin/claude-techno-mo
 | `hooks/package.json` | `"type": "module"`, so node 20 runs the player (it imports `engine.js`). |
 | `hooks/register.js` | The chat side: a remote control for the player. Starts the player when none (or an older one) answers, polls its state every second, `/techno` command, `jam` tool, save and share. Every `$` call lives here (the validator refuses `$` passed to imported files). |
 | `hooks/views.js` | The app's screens as pure functions of `(ui, vm, act)`: the deck (layout A with the skyline), the edit card (layout B), favorites (with the tracks heard before), new track, and the bar shown while the app is hidden. |
+| `hooks/classics.js` | Pure: `CLASSICS`, the song names that stand on their own (the first eight are the old starters), and `pickIndex`. Shared by the chat and the player. |
 | `hooks/words.js` | Pure: `keyWords(prompt)`, the 2 or 3 plain words of a prompt that become a track auto may pick. |
 | `hooks/grid.client.js` | A `Client` surface module: the step sequencer with its own playhead clock. Colors of empty cells and the playhead are theme keys (`subtle`, `text`), so it reads in light and dark. A click on a row name posts `{ toggle: layer }`; a click on a cell posts `{ step, layer }`. |
 | `hooks/engine.js` | The synth, `PLAN` (the set), `HANDOVER`, `render` (a folded loop, for mp3s), `renderLoop` (a loop with its tail, for the stream, optionally mixed with a second track). Plain JS with no Node or browser APIs. |
@@ -55,8 +56,42 @@ node 20 or later. Public at https://github.com/ruslanshchuchkin/claude-techno-mo
   minute). Auto and ⏭ play the newest chat not played yet (`nextChat`);
   `chatsPlayed` in the state keeps the walk, and starts again from the
   newest when every chat played. Favorites in turn still play favorites.
-  The old pool (repo names, prompt key words) and the starters come only
-  when no chat has a title.
+- **A classic after every three chats** ("let's generate more classics as
+  well! maybe we sometimes wire them in"). `CLASSICS` in
+  `hooks/classics.js`: 36 names (the 8 old starters, then the city at
+  night, space at 3am, the errors of a sunday; seeds `BcwvliypGaIyKwn`,
+  `VhzSU3clXoyW5sY`, `jiLZvAe7ukxg9z1`). `sinceClassic` counts the chats;
+  at 3 auto plays the classic `nextClassic` picks (stable until it plays,
+  `classicsPlayed` keeps the walk). A pick from the new song screen counts
+  too (`played()`). The old pool (repo names, prompt key words) no longer
+  plays in auto; the key words are still collected. Ruslan did not answer
+  yet whether to drop them.
+- **New song, option B** (picked from A two lists, B type or pick a
+  number, C one tap; seeds `WN2G4L9q5MZVsdF`, `mXX0eidp2NnnKss`,
+  `t851Gdjcvp1XKqO`; "B is the best but user can just click on 1 2 3 etc
+  or type themselves"). `crate()` in views.js: the name box with one real
+  example (the first classic shown, its mood and bpm), then your 5 newest
+  chats (`chats` in the player's state: phrase, project, time) numbered
+  1..5 with the project and the age, and 4 classics numbered on, `⚄ others`
+  shows the next four. Each row is a plain Button with a digit `hotkey`: a
+  click, or the digit in an empty chat box, plays it. The mockups:
+  `previews/design/new-song.html` (gitignored).
+- **"update ready", not auto-update** (Ruslan: "add to readme (altho it
+  might be insecure, right?) in this case maybe just give an update ready
+  ... maybe we build a button"). A chat's start reads `version` from
+  plugin.json on GitHub's main (`LATEST` in register.js, the mod's only
+  network call). Newer: the app shows "techno x is ready [update]", the bar
+  "↑ update". The button runs `UPDATE_SH`: the shell finds the Claude Code
+  that runs this chat among its parents (`*/MacOS/claude` in the desktop,
+  `*/claude/versions/*` for the CLI), else `claude` on the login PATH, then
+  `plugin marketplace update techno-mod && plugin update techno@techno-mod`.
+  Done: "✓ updated · open a new chat". The README says how to turn on
+  auto-update and why it is off by default.
+- **Debug switch**: `TECHNO_DEBUG=crate,update` opens on the new song
+  screen and fakes "techno 9.9.9 is ready" (the button only finds claude).
+  It works only when the mod loads from a folder (`--plugin-dir`), never
+  from the plugin cache: `TECHNO_DEBUG=crate,update claude --plugin-dir
+  ~/Documents/techno-mod "/techno"`.
 - **Updates do not reach users by themselves.** A third-party marketplace
   has background auto-update off, and `marketplace.json` has no field to
   turn it on (docs: code.claude.com/docs/en/plugins/host-marketplace). Each

@@ -264,13 +264,41 @@ function favorites(ui, vm, act) {
   ]
 }
 
+// New song, option B (Ruslan, 2026-10-08: "B is the best but user can just
+// click on 1 2 3 etc or type themselves"): the name box first, with one
+// example of what a name gives; under it your recent chats and a few
+// classics, numbered. A click or the digit (in an empty chat box) plays one.
+const ago = (ms) => {
+  const m = Math.max(1, Math.round(ms / 60000))
+  if (m < 60) return m + ' min ago'
+  const h = Math.round(m / 60)
+  if (h < 24) return h + ' h ago'
+  const d = Math.round(h / 24)
+  return d === 1 ? 'yesterday' : d + ' d ago'
+}
+
+function numbered(ui, act, key, n, phrase, meta) {
+  return ui.Box({ key, flexDirection: 'row', columnGap: 2, children: [
+    ui.Box({ flexShrink: 1, children: [ui.Button({ key: key + '-play', label: phrase, plain: true, hotkey: String(n), onPress: () => act.pick(phrase) })] }),
+    meta ? dim(ui, meta, { key: key + '-meta', wrap: 'truncate-end' }) : null,
+  ].filter(Boolean) })
+}
+
 function crate(ui, vm, act) {
-  const names = (list, prefix) => list.map((p) => link(ui, prefix + p, p, () => act.pick(p)))
+  const { chats, classics, example, now } = vm.crate
+  let n = 0
+  const chatRows = chats.map((c) => numbered(ui, act, 'chat-' + c.phrase, ++n, c.phrase, [c.project, ago(now - c.at)].filter(Boolean).join(' · ')))
+  const classicRows = classics.map((p) => numbered(ui, act, 'classic-' + p, ++n, p, ''))
   return [
-    spread(ui, [ui.Text({ bold: true, children: ['new song'] }), dim(ui, 'every song grows from a name: its letters pick the key, the patterns and the riff')], [link(ui, 'back', '‹ back', () => act.screen('deck'))], 'crate-top'),
-    vm.crate.repo.length ? row(ui, [dim(ui, 'this project'), ...names(vm.crate.repo, 'r-')], { key: 'repo', columnGap: 2 }) : null,
-    row(ui, [dim(ui, 'starters'), ...names(vm.crate.starters, 's-')], { key: 'starters', columnGap: 2 }),
-    ui.Input({ key: 'phrase', label: 'or type any phrase', placeholder: 'late night deploy', value: '', submitLabel: 'play', onSubmit: (v) => act.phrase(v) }),
+    spread(ui, [ui.Text({ bold: true, children: ['new song'] }), dim(ui, `· type a name, get a song: "${example.phrase}" plays ${example.mood}, ${example.bpm} bpm`, { wrap: 'truncate-end' })], [link(ui, 'back', '‹ back', () => act.screen('deck'))], 'crate-top'),
+    ui.Input({ key: 'phrase', label: 'name', placeholder: 'type any name…', value: '', submitLabel: 'play', onSubmit: (v) => act.phrase(v) }),
+    ui.Box({ key: 'lists', flexDirection: 'row', flexWrap: 'wrap', columnGap: 4, marginTop: 1, children: [
+      chats.length ? col(ui, [dim(ui, 'or press a number · your recent chats', { key: 'chats-head' }), ...chatRows], { key: 'chats', width: '58%', minWidth: 34, flexGrow: 1 }) : null,
+      col(ui, [
+        ui.Box({ key: 'classics-head', flexDirection: 'row', columnGap: 2, children: [dim(ui, chats.length ? 'classics' : 'or press a number · classics'), link(ui, 'classics-more', '⚄ others', () => act.moreClassics())] }),
+        ...classicRows,
+      ], { key: 'classics', minWidth: 26, flexGrow: 1 }),
+    ].filter(Boolean) }),
   ]
 }
 
@@ -283,9 +311,23 @@ function down(ui, vm, act) {
   ]
 }
 
+// A new version on GitHub: one line with an update button (Ruslan,
+// 2026-10-08: "just give an update ready ... maybe we build a button").
+function updateLine(ui, vm, act) {
+  const u = vm.update
+  if (!u) return null
+  const say = {
+    ready: [ui.Text({ color: 'claude', bold: true, children: ['techno ' + u.latest + ' is ready'] }), ui.Button({ key: 'update', label: 'update', variant: 'primary', onPress: () => act.update() })],
+    working: [dim(ui, 'updating to ' + u.latest + '…')],
+    done: [ui.Text({ color: 'claude', bold: true, children: ['✓ updated to ' + u.latest] }), dim(ui, '· open a new chat to use it')],
+    failed: [ui.Text({ children: ['the update failed: ' + (u.why || 'unknown')] }), ui.Button({ key: 'update', label: 'try again', onPress: () => act.update() })],
+  }[u.state]
+  return row(ui, say, { key: 'update-line' })
+}
+
 export function appView(ui, vm, act) {
   const body = !vm.view ? down(ui, vm, act) : vm.screen === 'favorites' ? favorites(ui, vm, act) : vm.screen === 'crate' ? crate(ui, vm, act) : deck(ui, vm, act)
-  return col(ui, [...body, vm.status ? dim(ui, vm.status, { key: 'status', wrap: 'truncate-end' }) : null], { borderStyle: 'round', paddingX: 1 })
+  return col(ui, [...body, updateLine(ui, vm, act), vm.status ? dim(ui, vm.status, { key: 'status', wrap: 'truncate-end' }) : null], { borderStyle: 'round', paddingX: 1 })
 }
 
 // The bar above the chat box while the app is hidden: the same transport as
@@ -298,6 +340,8 @@ export function miniView(ui, vm, act) {
     ui.Text({ bold: true, children: ['♪'] }),
     ...transport(ui, vm, act, 'mini-'),
   ], [
+    vm.update?.state === 'ready' ? ui.Button({ key: 'mini-update', label: '↑ update', variant: 'primary', onPress: () => act.update() }) : null,
+    vm.update?.state === 'done' ? dim(ui, '✓ updated · new chat') : null,
     toggle(ui, 'mini-auto', vm.auto ? '● auto' : '○ auto', vm.auto, () => act.auto()),
     link(ui, 'mini-open', 'open', () => act.open()),
     link(ui, 'mini-close', '×', () => act.closeBar()),

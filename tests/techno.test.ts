@@ -16,14 +16,14 @@ const PANE = {
 // A fake of the background player (player/techno.mjs): the same answers on
 // the socket, with the real conductor, and no sound.
 function fakePlayer() {
-  const p: any = { set: newSet(trackFor('late night deploy')), volume: 4, playing: false, auto: true, favorites: [], history: [], rev: 1, said: '', cmds: [] as any[] }
+  const p: any = { chats: [{ phrase: 'social media content plan', project: 'yourcolorpalette', at: -3600000 }, { phrase: 'fae court quiz', project: '', at: -2 * 86400000 }], set: newSet(trackFor('late night deploy')), volume: 4, playing: false, auto: true, favorites: [], history: [], rev: 1, said: '', cmds: [] as any[] }
   const id = (t: any) => encodeCode({ ...t, part: null })
   const view = () => {
     const t = p.set.track
     const nx = PLAN[t.part + 1]
     return { code: encodeCode(t), id: id(t), phrase: t.phrase, mood: moodName(t), bpm: t.bpm, part: t.part, section: PLAN[t.part].section, name: PLAN[t.part].name, from: null, next: nx ? { name: nx.name, adds: nx.adds, layer: nx.layer } : { name: 'the next track' }, bar: 0, loopsLeft: 1, at: posOf(p.set), plan: planOf(t) }
   }
-  const state = () => ({ version: '9.9.9', rev: p.rev, now: 0, playing: p.playing, auto: p.auto, playlist: null, view: view(), barStartedAt: 0, barMs: 1800, stepMs: 112, nextInMs: p.playing && p.auto ? 23000 : null, fav: p.favorites.some((f: any) => f.code === id(p.set.track)), favorites: p.favorites, recent: p.history.map((c: string) => ({ code: c, label: parseCode(c)!.phrase, mood: 'dark', bpm: 128 })), said: p.said, canUndo: false, volume: p.volume })
+  const state = () => ({ version: '9.9.9', rev: p.rev, now: 0, playing: p.playing, auto: p.auto, playlist: null, view: view(), barStartedAt: 0, barMs: 1800, stepMs: 112, nextInMs: p.playing && p.auto ? 23000 : null, fav: p.favorites.some((f: any) => f.code === id(p.set.track)), favorites: p.favorites, recent: p.history.map((c: string) => ({ code: c, label: parseCode(c)!.phrase, mood: 'dark', bpm: 128 })), said: p.said, canUndo: false, volume: p.volume, chats: p.chats })
   p.command = (c: any) => {
     p.cmds.push(c)
     p.rev++
@@ -49,7 +49,7 @@ function fakePlayer() {
 }
 
 // Answers every call the mod makes that the kit does not answer itself
-function stubs(on: any, store: Record<string, unknown> = {}, run?: (argv: string) => unknown) {
+function stubs(on: any, store: Record<string, unknown> = {}, run?: (argv: string) => unknown, latest = '0.0.1') {
   const player = fakePlayer()
   const clock = mock.clock(on)
   mock.store(on, store)
@@ -60,6 +60,8 @@ function stubs(on: any, store: Record<string, unknown> = {}, run?: (argv: string
   on('tool.register', () => ({ value: undefined }))
   on('ui.copy', () => ({ value: { isCopied: true } }))
   on('http.fetch', ($: any, e: any) => {
+    // the plugin.json on GitHub, for the update notice
+    if (String(e.url).startsWith('https://')) return { value: { status: 200, ok: true, headers: {}, text: JSON.stringify({ name: 'techno', version: latest }) } }
     const body = e.init?.body ? JSON.parse(e.init.body) : null
     return { value: { status: 200, ok: true, headers: {}, text: JSON.stringify(body ? player.command(body) : player.state()) } }
   })
@@ -470,4 +472,56 @@ test('a song with its own plan: auto walks it, builds go before every drop, the 
   let walked = 0
   while (!set.handover && walked < 60) { afterLoop(set, { auto: true, nextTrack: () => trackFor('x') }); walked++ }
   expect(walked).toBe(plan.reduce((n: number, i: number) => n + PLAN[i].loops, 0))
+})
+
+test('new song: a name box with an example, then your recent chats and classics, numbered; a click or a digit plays one', async ($, on) => {
+  const { player } = stubs(on)
+  await start($)
+  await $.command.run({ command: 'techno', args: '' })
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await ui.press({ key: 'new-song' })
+  expect(await ui.find({ key: 'phrase' })).toBeDefined()
+  expect((await ui.find({ text: /type a name, get a song/ }))?.text).toMatch(/plays (sad|mysterious|dark), \d{3} bpm/)
+  // the chats come first, 1 and 2, with the project and how long ago
+  const first = await ui.find({ key: 'chat-social media content plan-play' })
+  expect(first?.props.hotkey).toBe('1')
+  expect(await ui.find({ text: /yourcolorpalette · 1 h ago/ })).toBeDefined()
+  expect((await ui.find({ key: 'chat-fae court quiz-play' }))?.props.hotkey).toBe('2')
+  expect(await ui.find({ text: /2 d ago/ })).toBeDefined()
+  // then four classics, 3 to 6; ⚄ others shows four more
+  const classics = async () => (await ui.findAll({ type: 'Button' })).filter((b: any) => /^classic-.*-play$/.test(b.key ?? b.props.key)).map((b: any) => b.props.label)
+  const before = await classics()
+  expect(before.length).toBe(4)
+  expect((await ui.find({ key: 'classic-' + before[3] + '-play' }))?.props.hotkey).toBe('6')
+  await ui.press({ key: 'classics-more' })
+  expect((await classics())[0]).not.toBe(before[0])
+  await ui.press({ key: 'chat-social media content plan-play' })
+  expect(player.cmds.at(-1)).toMatchObject({ op: 'pick', code: 'social media content plan' })
+  await ui.unmount()
+})
+
+test('a newer version on GitHub: the app says it is ready, update runs the plugin update, then asks for a new chat', async ($, on) => {
+  const runs: string[] = []
+  stubs(on, {}, (argv) => { if (argv.startsWith('sh -c')) { runs.push(argv); return { exitCode: 0, stdout: 'updated', stderr: '' } } }, '99.0.0')
+  await start($)
+  await $.command.run({ command: 'techno', args: '' })
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  for (let i = 0; i < 20 && !(await ui.find({ key: 'update' })); i++) await $.clock.sleep(10)
+  expect(await ui.find({ text: /techno 99\.0\.0 is ready/ })).toBeDefined()
+  await ui.press({ key: 'update' })
+  expect(runs[0]).toContain('plugin marketplace update techno-mod')
+  expect(runs[0]).toContain('plugin update techno@techno-mod')
+  expect(await ui.find({ text: /✓ updated to 99\.0\.0/ })).toBeDefined()
+  expect(await ui.find({ text: /open a new chat/ })).toBeDefined()
+  await ui.unmount()
+})
+
+test('the same version on GitHub: no update notice', async ($, on) => {
+  stubs(on, {}, undefined, '0.0.1')
+  await start($)
+  await $.command.run({ command: 'techno', args: '' })
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect(await ui.find({ key: 'update-line' })).toBeUndefined()
+  expect(await ui.find({ key: 'update' })).toBeUndefined()
+  await ui.unmount()
 })

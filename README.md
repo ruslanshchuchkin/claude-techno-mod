@@ -62,7 +62,7 @@ The band in the video above, part by part:
 | **the grid** | The loop that plays now. Click a cell to add a hit, click a name to mute it |
 | **auto** | On: it plays the whole set and moves on by itself. Off: it stays on one part |
 | **mood** | **sad**, **mysterious** or **dark**: the scale, the tempo and the energy in one click. The bpm sits beside it |
-| **+ new song** | Grow a new song: pick a name from your project, a starter, or type any phrase |
+| **+ new song** | Type any name, or press a number: one of your recent chats or a classic |
 | **edit** | The studio: instruments, patterns, notes, grit, filters, tempo, and the song's parts |
 | <kbd>⏯</kbd> <kbd>⏭</kbd> <kbd>⏮</kbd> | The Mac media keys work too, and the track shows in Control Center |
 
@@ -74,14 +74,16 @@ The band in the video above, part by part:
 
 ## 🧬 Your work is the playlist
 
-When a track ends, auto picks the next one from what you do: the project folder, the git branch, your last commit messages, and the key words of your prompts, from every chat.
+When a track ends, auto plays your previous chat. It walks back through your Claude Code chats, newest first, and each chat's title becomes a song. Every fourth song is a classic, so it never runs dry.
 
 ```
-you ask:   "why does the stripe webhook retry twice on staging"
-up next:   stripe webhook staging
+now:       anonymous season statistics by country
+up next:   mrr 10k 50k project opportunities
+then:      fae court quiz business design and seo
+then:      segfault on sunday   ← a classic
 ```
 
-Only plain words get in. Never paths, links, emails, numbers, or anything that looks like a key.
+The mod reads the titles on your Mac, from the chats Claude Code already keeps there, and uploads them nowhere. (The chat you're in does hear what's playing, so Claude can change it.)
 
 ## 🔗 Share a track
 
@@ -123,7 +125,7 @@ chat ─┘                renders bars ahead       gapless audio,
                                                 Control Center, media keys
 ```
 
-Nothing goes over the network. The helper app ships prebuilt (one universal binary for Apple silicon and Intel), so you do not need Xcode.
+The music never touches the network. The one request: when a chat starts, it reads the version number on GitHub to tell you an update is ready. The helper app ships prebuilt (one universal binary for Apple silicon and Intel), so you do not need Xcode.
 
 </details>
 
@@ -131,6 +133,12 @@ Nothing goes over the network. The helper app ships prebuilt (one universal bina
 <summary><b>🔄 Update or uninstall</b></summary>
 
 <br>
+
+When a new version is out, the deck says **techno 0.x.y is ready**. Press **update**, then open a new chat. That's it.
+
+Want it fully automatic? `/plugin` → **Marketplaces** → **techno-mod** → **Enable auto-update**. It's off by default, and that's a good default: with it on, whatever lands in this repo runs on your Mac without you looking. The button lets you pick the moment.
+
+Or by hand:
 
 ```bash
 claude plugin marketplace update techno-mod

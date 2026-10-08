@@ -8,14 +8,15 @@
 // /techno              show or hide the app
 // /techno <phrase>     a new track from the phrase (or from a share code)
 // /techno stop | save | code
-import { parseCode, encodeCode, describe, render, toWav, grid, activeLayers, cleanTrack, soundInfo, planOf, planAdds, LAYERS, GRID_LAYERS, PLAN, VIBES, BPM_MIN, BPM_MAX } from './engine.js'
+import { parseCode, encodeCode, describe, render, toWav, grid, activeLayers, cleanTrack, soundInfo, planOf, planAdds, LAYERS, GRID_LAYERS, PLAN, VIBES, BPM_MIN, BPM_MAX, trackFor, moodName } from './engine.js'
 import { appView, miniView } from './views.js'
 import { keyWords } from './words.js'
+import { CLASSICS } from './classics.js'
 
 const TOOL = 'mcp__techno__jam'
 // The plugin version: in the jam tool's answer, and the player of an older
 // version is replaced by this one. Keep it equal to plugin.json (a test checks).
-const VERSION = '0.9.9'
+const VERSION = '0.9.10'
 // [accent, normal] fill of a hit in the step grid
 const LAYER_COLORS = {
   kick: ['#e85a5a', '#c94040'],
@@ -27,7 +28,13 @@ const LAYER_COLORS = {
   acid: ['#8fdc50', '#6fbf30'],
   stab: ['#b88ae8', '#9a6ad0'],
 }
-const STARTERS = ['late night deploy', 'coffee at 3am', 'merge conflict', 'friday deploy', 'null pointer', 'ship it', 'warehouse 4am', 'rooftop sunrise']
+// Where a new version is announced: the plugin.json on GitHub's main branch.
+const LATEST = 'https://raw.githubusercontent.com/ruslanshchuchkin/claude-techno-mod/main/.claude-plugin/plugin.json'
+// Runs the update with the Claude Code that runs this chat (the desktop
+// app's own copy, or the CLI), found among the shell's parents.
+const UPDATE_SH = 'p=$PPID; c=; for i in 1 2 3 4; do x=$(ps -o comm= -p "$p"); case "$x" in */MacOS/claude|*/claude/versions/*|*/bin/claude) c=$x; break;; esac; p=$(ps -o ppid= -p "$p" | tr -d " "); done; ' +
+  '[ -n "$c" ] || c=$(sh -lc "command -v claude"); [ -n "$c" ] || { echo "claude not found" >&2; exit 2; }; ' +
+  '"$c" plugin marketplace update techno-mod && "$c" plugin update techno@techno-mod'
 
 // Module state. The player holds the music state; this is the chat's view of it.
 const s = {
@@ -48,6 +55,9 @@ const s = {
   status: '',
   pollTimer: null,
   grids: new Map(),
+  classicTurn: Math.floor(Math.random() * 9), // which four classics the new song screen shows
+  update: null, // { latest, state: 'ready' | 'working' | 'done' | 'failed', why }
+  debug: [], // dev only: TECHNO_DEBUG=crate,update with the mod loaded from a folder (--plugin-dir)
 }
 
 const shareLine = (code) => '/techno ' + code
@@ -175,6 +185,33 @@ async function share($, code) {
   $.ui.invalidate('ui.render')
 }
 
+// ---------- updates ----------
+
+// Ruslan, 2026-10-08: auto-update runs a new push without a look, so the
+// mod only says "update ready" and the person presses update.
+async function checkUpdate($) {
+  if (s.debug.includes('update')) { s.update = { latest: '9.9.9', state: 'ready' }; $.ui.invalidate('ui.render'); return }
+  try {
+    const r = await $.http.fetch(LATEST)
+    const latest = r.ok ? JSON.parse(r.text).version : null
+    if (latest && !versionAtLeast(VERSION, latest)) { s.update = { latest, state: 'ready' }; $.ui.invalidate('ui.render') }
+  } catch { /* offline: no notice */ }
+}
+
+async function runUpdate($) {
+  if (!s.update || s.update.state === 'working') return
+  s.update = { ...s.update, state: 'working' }
+  $.ui.invalidate('ui.render')
+  try {
+    // the debug run finds claude and stops there
+    const r = await $.process.run(['sh', '-c', s.debug.includes('update') ? UPDATE_SH.replace(/; "\$c" plugin.*$/, '; echo "$c"') : UPDATE_SH], { timeoutMs: 180000 })
+    s.update = r.exitCode === 0 ? { ...s.update, state: 'done' } : { ...s.update, state: 'failed', why: (r.stderr || r.stdout).trim().split('\n').pop()?.slice(0, 120) }
+  } catch (err) {
+    s.update = { ...s.update, state: 'failed', why: String(err?.message ?? err).slice(0, 120) }
+  }
+  $.ui.invalidate('ui.render')
+}
+
 // ---------- the app ----------
 
 function markUsed($) {
@@ -223,6 +260,9 @@ export function register(on) {
     s.home = (await $.env.get('HOME')) ?? ''
     s.sock = s.home + '/Library/Caches/techno/techno.sock'
     if ((await $.store.get('bar')) === true) s.used = true
+    // never from an installed copy: those live in the plugin cache
+    if (!$.plugin.root.includes('/.claude/plugins/')) s.debug = String((await $.env.get('TECHNO_DEBUG')) ?? '').split(',').filter(Boolean)
+    if (s.debug.includes('crate')) s.screen = 'crate'
     await $.tool.register({
       name: 'jam',
       description:
@@ -257,6 +297,7 @@ export function register(on) {
     // the command and the tool are there at once, the player comes up behind.
     void (async () => {
       await loadRepo($)
+      void checkUpdate($)
       // the first chat on 0.8 hands the kept tracks and the last track to the player
       const kept = await $.store.get('saved')
       const track = await $.store.get('track')
@@ -377,7 +418,12 @@ export function register(on) {
       said: ps?.said ?? '',
       you: s.you,
       status: s.status,
-      crate: { repo: s.repo, starters: STARTERS },
+      crate: (() => {
+        const classics = Array.from({ length: 4 }, (_, i) => CLASSICS[(s.classicTurn * 4 + i) % CLASSICS.length])
+        const ex = trackFor(classics[0])
+        return { chats: ps?.chats ?? [], classics, example: { phrase: ex.phrase, mood: moodName(ex), bpm: ex.bpm }, now }
+      })(),
+      update: s.update,
       gridEl: rows.length ? ui.Client({ key: 'grid', module: './grid.client.js', props: { rows, step, stepMs: ps?.stepMs || 115, playing: looping, stamp: ps?.barStartedAt ?? 0 } }) : null,
     }
     const go = (body) => () => cmd($, body)
@@ -410,6 +456,8 @@ export function register(on) {
       close: () => { s.isOpen = false; $.ui.invalidate('ui.render') },
       closeBar: () => { s.barClosed = true; $.store.set('bar', false); $.ui.invalidate('ui.render') },
       retry: () => ensurePlayer($).then(() => $.ui.invalidate('ui.render')),
+      moreClassics: () => { s.classicTurn++; $.ui.invalidate('ui.render') },
+      update: () => runUpdate($),
     }
     const theirs = await next(e)
     return ui.Box({ flexDirection: 'column', children: [s.isOpen ? appView(ui, vm, act) : miniView(ui, vm, act), theirs] })

@@ -20,6 +20,7 @@ import { spawn, execFile, execFileSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import * as E from '../hooks/engine.js'
 import * as C from '../hooks/conductor.js'
+import { CLASSICS, pickIndex } from '../hooks/classics.js'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const VERSION = JSON.parse(fs.readFileSync(path.join(HERE, '../.claude-plugin/plugin.json'), 'utf8')).version
@@ -34,7 +35,6 @@ const APP = process.env.TECHNO_DIR ? path.join(process.env.TECHNO_DIR, 'TechnoPl
 const BIN = path.join(APP, 'Contents/MacOS/TechnoPlayer')
 const SOURCE = path.join(HERE, 'TechnoPlayer.swift')
 const PREBUILT = path.join(HERE, 'bin/TechnoPlayer')
-const STARTERS = ['late night deploy', 'coffee at 3am', 'merge conflict', 'friday deploy', 'null pointer', 'ship it', 'warehouse 4am', 'rooftop sunrise']
 // how many bars wait in the helper's queue beyond the one playing
 const AHEAD = 2
 
@@ -55,6 +55,9 @@ const st = {
   pool: Array.isArray(saved.pool) ? saved.pool : [],
   // the chats auto made a song of, so the next song is an older chat
   chatsPlayed: Array.isArray(saved.chatsPlayed) ? saved.chatsPlayed : [],
+  // the classics auto played, and how many chats since the last classic
+  classicsPlayed: Array.isArray(saved.classicsPlayed) ? saved.classicsPlayed : [],
+  sinceClassic: Number.isInteger(saved.sinceClassic) ? saved.sinceClassic : 0,
   // 0 is mute, 4 the old fixed level, 5 about 3 dB over it
   volume: Number.isInteger(saved.volume) && saved.volume >= 0 && saved.volume <= 5 ? saved.volume : 4,
   imported: !!saved.imported,
@@ -67,7 +70,7 @@ function persist() {
   st.rev++
   clearTimeout(saveTimer)
   saveTimer = setTimeout(() => {
-    const data = { auto: st.auto, playlist: st.playlist, favorites: st.favorites, history: st.history.slice(-30), pool: st.pool.slice(-40), chatsPlayed: st.chatsPlayed.slice(-200), imported: st.imported, volume: st.volume, track: E.encodeCode(cursor.set.track) }
+    const data = { auto: st.auto, playlist: st.playlist, favorites: st.favorites, history: st.history.slice(-30), pool: st.pool.slice(-40), chatsPlayed: st.chatsPlayed.slice(-200), classicsPlayed: st.classicsPlayed, sinceClassic: st.sinceClassic, imported: st.imported, volume: st.volume, track: E.encodeCode(cursor.set.track) }
     fs.writeFileSync(STATE_FILE, JSON.stringify(data, null, 1))
   }, 400)
 }
@@ -396,20 +399,34 @@ function nextChat(here) {
   return list[0]
 }
 
+// A classic not played yet, the same one until it plays; after all of them,
+// they start again.
+function nextClassic(here) {
+  let left = CLASSICS.filter((p) => p !== here && !st.classicsPlayed.includes(p))
+  if (!left.length) { st.classicsPlayed = []; left = CLASSICS.filter((p) => p !== here) }
+  return left[pickIndex(left.join('|'), left.length)]
+}
+
+// A song made from a chat or a classic: what auto keeps of it.
+function played(phrase) {
+  if (CLASSICS.includes(phrase)) { st.classicsPlayed = [...st.classicsPlayed.filter((p) => p !== phrase), phrase]; st.sinceClassic = 0 }
+  else if (chats().some((c) => c.phrase === phrase)) { st.chatsPlayed = [...st.chatsPlayed.filter((p) => p !== phrase), phrase].slice(-200); st.sinceClassic++ }
+}
+
 // ---------- which track comes next ----------
 
 function candidates() {
   if (st.playlist === 'favorites' && st.favorites.length) return st.favorites.map((f) => f.code)
-  const all = [...st.pool.map((p) => idOf(E.trackFor(p))), ...st.favorites.map((f) => f.code), ...STARTERS.map((p) => idOf(E.trackFor(p)))]
+  const all = [...st.pool.map((p) => idOf(E.trackFor(p))), ...st.favorites.map((f) => f.code), ...CLASSICS.slice(0, 8).map((p) => idOf(E.trackFor(p)))]
   return all.filter((c, i) => all.indexOf(c) === i)
 }
 
 function peekNext() {
   const here = cursor.set.track.phrase
-  // the chats first, unless you play your favorites in turn
+  // your chats, a classic after every three, unless you play your favorites in turn
   if (st.playlist !== 'favorites') {
-    const chat = nextChat(here)
-    if (chat) return E.trackFor(chat.phrase)
+    const chat = st.sinceClassic >= 3 ? null : nextChat(here)
+    return E.trackFor(chat ? chat.phrase : nextClassic(here))
   }
   const list = candidates()
   const name = (c) => E.parseCode(c)?.phrase
@@ -419,7 +436,7 @@ function peekNext() {
     i = (i + 1) % list.length
     if (name(list[i]) !== here && (st.playlist === 'favorites' || !recent.has(name(list[i])))) return E.parseCode(list[i])
   }
-  return E.trackFor(STARTERS[Math.floor(Math.random() * STARTERS.length)])
+  return E.trackFor(CLASSICS[Math.floor(Math.random() * CLASSICS.length)])
 }
 
 function remember(t) {
@@ -430,7 +447,7 @@ function remember(t) {
 function takeNext() {
   remember(cursor.set.track)
   const t = peekNext()
-  if (chats().some((c) => c.phrase === t.phrase)) st.chatsPlayed = [...st.chatsPlayed.filter((p) => p !== t.phrase), t.phrase].slice(-200)
+  played(t.phrase)
   return t
 }
 
@@ -518,6 +535,7 @@ function command(c) {
     case 'pick': {
       const t = E.parseCode(c.code) ?? E.trackFor(c.code)
       if (c.playlist !== undefined) st.playlist = c.playlist
+      played(t.phrase)
       jumpTo(t)
       st.said = 'now playing: ' + t.phrase
       if (!st.playing) play()
@@ -596,7 +614,7 @@ function stateOut() {
   if (st.playing && st.auto && s?.t) nextInMs = Math.max(0, s.t + barMs - now) + (7 - v.bar) * barMs + (v.loopsLeft - 1) * 8 * barMs
   const fav = st.favorites.some((f) => f.code === v.id)
   const recent = [...st.history].reverse().slice(0, 8).map((c) => { const t = E.parseCode(c); return t ? labelOf(t) : null }).filter(Boolean)
-  return { version: VERSION, rev: st.rev, now, playing: st.playing, auto: st.auto, playlist: st.playlist, view: v, barStartedAt: s?.t ?? 0, barMs, stepMs: barMs / 16, nextInMs, fav, favorites: st.favorites, recent, said: st.said, canUndo: undos.length > 0, volume: st.volume }
+  return { version: VERSION, rev: st.rev, now, playing: st.playing, auto: st.auto, playlist: st.playlist, view: v, barStartedAt: s?.t ?? 0, barMs, stepMs: barMs / 16, nextInMs, fav, favorites: st.favorites, recent, said: st.said, canUndo: undos.length > 0, volume: st.volume, chats: chats().slice(0, 5).map(({ phrase, project, at }) => ({ phrase, project, at })) }
 }
 
 // ---------- the socket ----------
@@ -617,7 +635,7 @@ function quit(why) {
   quitting = true
   log('quit: ' + why)
   clearTimeout(saveTimer)
-  try { fs.writeFileSync(STATE_FILE, JSON.stringify({ auto: st.auto, playlist: st.playlist, favorites: st.favorites, history: st.history.slice(-30), pool: st.pool.slice(-40), chatsPlayed: st.chatsPlayed.slice(-200), imported: st.imported, volume: st.volume, track: E.encodeCode(cursor.set.track) }, null, 1)) } catch { /* best effort */ }
+  try { fs.writeFileSync(STATE_FILE, JSON.stringify({ auto: st.auto, playlist: st.playlist, favorites: st.favorites, history: st.history.slice(-30), pool: st.pool.slice(-40), chatsPlayed: st.chatsPlayed.slice(-200), classicsPlayed: st.classicsPlayed, sinceClassic: st.sinceClassic, imported: st.imported, volume: st.volume, track: E.encodeCode(cursor.set.track) }, null, 1)) } catch { /* best effort */ }
   send({ op: 'quit' })
   server.close()
   try { fs.unlinkSync(SOCK) } catch { /* gone */ }

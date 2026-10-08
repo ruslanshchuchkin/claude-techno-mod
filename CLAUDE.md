@@ -39,6 +39,7 @@ node 20 or later. Public at https://github.com/ruslanshchuchkin/claude-techno-mo
 | `README.md`, `LICENSE` | The public front page (its own voice, not STE) and the MIT license. |
 | `docs/tasks/` | Hand-off tasks for another agent, one file each, with the steps and the checks. Done: `readme-demo-usual-voice.md` (the README demo with the app's own voice, 2026-10-05). |
 | `media/late-night-deploy-drop-1.mp3` | The 29 s demo the README links: the riser into drop 1 of `late-night-deploy@133m0e2k2`. |
+| `scripts/readme-media/launch-audio.mjs`, `launch-video.py` | The square 45 s launch video: the audio as the player plays a mood change, then the deck, the chat and the typed claims drawn per frame. Steps in `scripts/readme-media/README.md`. |
 
 ## Decisions
 
@@ -122,6 +123,13 @@ node 20 or later. Public at https://github.com/ruslanshchuchkin/claude-techno-mo
   crest about 10.7 dB; the 2.5 kHz band sits 21 dB under the sub. No change
   needed; the README says it. Measure again with `ffmpeg -i set.wav -af
   "volume=0.7,ebur128=peak=true" -f null -` after a change to the master.
+- **The launch video, option A "say darker"** (Ruslan, 2026-10-08; picked
+  from A square 45 s, B wide 60 s "2 am silent vs. with it", C vertical
+  30 s; seeds `3qYRFYCnDO0H7TG`, `QzTgvmKpjZtUima`, `o01Q6D179oRi3Qw`;
+  ending: the GitHub star, not the install line). 1080x1080, 45 s. The
+  riser plays in sad, "darker" is typed, the jam lands on the next bar
+  (0:04), drop 1 at 0:09, four typed claims of 4 bars each, then "Star it
+  on GitHub". Drawn, not recorded, like the README video.
 - **README voice**: its own voice (playful, not STE), a stars badge, one star
   line under the pitch and one in the footer.
 - **The web page with a player is parked** ("for now let's focus not on web

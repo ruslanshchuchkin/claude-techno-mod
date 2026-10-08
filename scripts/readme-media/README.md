@@ -15,3 +15,15 @@ ffmpeg -y -ss 9.6 -t 19 -i $D/demo.wav -af "afade=t=in:d=0.2,afade=t=out:st=17.5
 `deck-video.py` reads `$D/demo.wav` itself (from 9.6 s, 19 s long, with fades) and muxes it. The clip starts 9.6 s into the riser loop, so the Whisper on bar 3 of the riser is cut off, and the line comes once, at about 0:05. The last argument (6.0) saves `$D/frame-6.0.png`: check that it shows the current deck.
 
 GitHub plays a video inline only from an upload on github.com (a `user-attachments` link). Upload the mp4 through the new-issue box (post nothing, clear the draft), then replace the link in the top `README.md`. The steps are in `docs/tasks/readme-demo-usual-voice.md`.
+
+## The launch video
+
+A square 45 s cut (option A, "say darker"): the riser plays in "sad", you type "darker", Claude turns the mood, it lands on the next bar (the player renders the loop again and plays the same bar of it), drop 1 lands at 0:09, four typed claims ride the drop (4 bars each), then "Star it on GitHub". The audio plays at the helper's gain (0.7): about -14 LUFS, true peak about -3 dBFS.
+
+```bash
+D=/tmp/techno-launch && mkdir -p $D
+node scripts/readme-media/launch-audio.mjs "late night deploy" $D
+python3 scripts/readme-media/launch-video.py $D $D/techno-mod-launch.mp4 3.0,9.6,30,43
+```
+
+The third argument saves stills (`$D/launch-<t>.png`). Pass `-` as the output to draw only the stills. The claims are `CLAIMS` in `launch-video.py`.

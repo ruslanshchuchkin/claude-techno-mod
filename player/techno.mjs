@@ -53,6 +53,8 @@ const st = {
   favorites: Array.isArray(saved.favorites) ? saved.favorites : [],
   history: Array.isArray(saved.history) ? saved.history : [],
   pool: Array.isArray(saved.pool) ? saved.pool : [],
+  // the chats auto made a song of, so the next song is an older chat
+  chatsPlayed: Array.isArray(saved.chatsPlayed) ? saved.chatsPlayed : [],
   // 0 is mute, 4 the old fixed level, 5 about 3 dB over it
   volume: Number.isInteger(saved.volume) && saved.volume >= 0 && saved.volume <= 5 ? saved.volume : 4,
   imported: !!saved.imported,
@@ -65,7 +67,7 @@ function persist() {
   st.rev++
   clearTimeout(saveTimer)
   saveTimer = setTimeout(() => {
-    const data = { auto: st.auto, playlist: st.playlist, favorites: st.favorites, history: st.history.slice(-30), pool: st.pool.slice(-40), imported: st.imported, volume: st.volume, track: E.encodeCode(cursor.set.track) }
+    const data = { auto: st.auto, playlist: st.playlist, favorites: st.favorites, history: st.history.slice(-30), pool: st.pool.slice(-40), chatsPlayed: st.chatsPlayed.slice(-200), imported: st.imported, volume: st.volume, track: E.encodeCode(cursor.set.track) }
     fs.writeFileSync(STATE_FILE, JSON.stringify(data, null, 1))
   }, 400)
 }
@@ -312,6 +314,88 @@ function pause() {
   persist()
 }
 
+// ---------- your chats ----------
+// Ruslan, 2026-10-08: "i want the next song to go to my previous session and
+// play based on it". The titles of your Claude Code chats on this machine,
+// newest first, read from the transcripts. Auto and ⏭ walk back through
+// them: each new song is the newest chat not played yet.
+
+const PROJECTS = path.join(process.env.CLAUDE_CONFIG_DIR || path.join(HOME, '.claude'), 'projects')
+const TITLE = /"customTitle":"((?:[^"\\]|\\.)*)"/g
+const CWD = /"cwd":"((?:[^"\\]|\\.)*)"/
+const titles = new Map() // file -> { mtime, title, project }
+let chatList = null, chatAt = 0
+
+// A chat writes its title again and again, so the last 256 KB holds the
+// newest one (a chat can be renamed).
+function readTitle(file, size) {
+  const len = Math.min(size, 256 * 1024)
+  const buf = Buffer.alloc(len)
+  const fd = fs.openSync(file, 'r')
+  try { fs.readSync(fd, buf, 0, len, size - len) } finally { fs.closeSync(fd) }
+  const text = buf.toString('utf8')
+  const all = [...text.matchAll(TITLE)]
+  if (!all.length) return null
+  const title = JSON.parse('"' + all[all.length - 1][1] + '"').replace(/^\s*[【[][^】\]]*[】\]]\s*/, '').trim()
+  const cwd = text.match(CWD)
+  const project = cwd ? path.basename(JSON.parse('"' + cwd[1] + '"')) : ''
+  return { title, project: project.startsWith('scratch') ? '' : project }
+}
+
+// The 40 newest chats with a title, one per name. Read again after a minute.
+function chats() {
+  if (chatList && Date.now() - chatAt < 60000) return chatList
+  const files = []
+  try {
+    for (const dir of fs.readdirSync(PROJECTS)) {
+      let names = []
+      try { names = fs.readdirSync(path.join(PROJECTS, dir)) } catch { continue }
+      for (const n of names) {
+        if (!n.endsWith('.jsonl')) continue
+        const file = path.join(PROJECTS, dir, n)
+        try { const s = fs.statSync(file); files.push({ file, mtime: s.mtimeMs, size: s.size }) } catch { /* gone */ }
+      }
+    }
+  } catch { /* no transcripts here */ }
+  files.sort((a, b) => b.mtime - a.mtime)
+  const out = [], seen = new Set()
+  for (const f of files.slice(0, 120)) {
+    let t = titles.get(f.file)
+    if (!t || t.mtime !== f.mtime) {
+      try { t = { mtime: f.mtime, ...(readTitle(f.file, f.size) ?? { title: null }) } } catch { t = { mtime: f.mtime, title: null } }
+      titles.set(f.file, t)
+    }
+    const phrase = chatPhrase(t.title)
+    // "Techno" is the name a chat gets when it only opened this app
+    if (!phrase || phrase === 'techno' || seen.has(phrase)) continue
+    seen.add(phrase)
+    out.push({ phrase, title: t.title, project: t.project, at: f.mtime })
+    if (out.length >= 40) break
+  }
+  chatList = out
+  chatAt = Date.now()
+  return out
+}
+
+// A chat's title as a song name: at most 40 characters, cut at a word.
+function chatPhrase(title) {
+  const p = E.normalizePhrase(title)
+  if (p.length <= 40) return p
+  const cut = p.slice(0, 41)
+  return cut.slice(0, cut.lastIndexOf(' ') > 10 ? cut.lastIndexOf(' ') : 40).trim()
+}
+
+// The newest chat not played yet; when every chat played, start again from
+// the newest.
+function nextChat(here) {
+  const list = chats().filter((c) => c.phrase !== here)
+  if (!list.length) return null
+  const fresh = list.find((c) => !st.chatsPlayed.includes(c.phrase))
+  if (fresh) return fresh
+  st.chatsPlayed = []
+  return list[0]
+}
+
 // ---------- which track comes next ----------
 
 function candidates() {
@@ -321,8 +405,13 @@ function candidates() {
 }
 
 function peekNext() {
-  const list = candidates()
   const here = cursor.set.track.phrase
+  // the chats first, unless you play your favorites in turn
+  if (st.playlist !== 'favorites') {
+    const chat = nextChat(here)
+    if (chat) return E.trackFor(chat.phrase)
+  }
+  const list = candidates()
   const name = (c) => E.parseCode(c)?.phrase
   const recent = new Set(st.history.slice(-3).map(name))
   let i = list.findIndex((c) => name(c) === here)
@@ -340,7 +429,9 @@ function remember(t) {
 
 function takeNext() {
   remember(cursor.set.track)
-  return peekNext()
+  const t = peekNext()
+  if (chats().some((c) => c.phrase === t.phrase)) st.chatsPlayed = [...st.chatsPlayed.filter((p) => p !== t.phrase), t.phrase].slice(-200)
+  return t
 }
 
 // Jump to a track: it starts from its beginning, on the next bar (Ruslan,
@@ -526,7 +617,7 @@ function quit(why) {
   quitting = true
   log('quit: ' + why)
   clearTimeout(saveTimer)
-  try { fs.writeFileSync(STATE_FILE, JSON.stringify({ auto: st.auto, playlist: st.playlist, favorites: st.favorites, history: st.history.slice(-30), pool: st.pool.slice(-40), imported: st.imported, volume: st.volume, track: E.encodeCode(cursor.set.track) }, null, 1)) } catch { /* best effort */ }
+  try { fs.writeFileSync(STATE_FILE, JSON.stringify({ auto: st.auto, playlist: st.playlist, favorites: st.favorites, history: st.history.slice(-30), pool: st.pool.slice(-40), chatsPlayed: st.chatsPlayed.slice(-200), imported: st.imported, volume: st.volume, track: E.encodeCode(cursor.set.track) }, null, 1)) } catch { /* best effort */ }
   send({ op: 'quit' })
   server.close()
   try { fs.unlinkSync(SOCK) } catch { /* gone */ }

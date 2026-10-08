@@ -43,6 +43,30 @@ node 20 or later. Public at https://github.com/ruslanshchuchkin/claude-techno-mo
 
 ## Decisions
 
+### 0.9.10 (Ruslan, 2026-10-08)
+
+- **The next song is your previous chat** ("i want the next song to go to
+  my previous session and play based on it - because rn i just listen to the
+  same sessions over and over again"). The player reads the titles of the
+  Claude Code chats on this machine (`~/.claude/projects/*/*.jsonl`, or
+  `CLAUDE_CONFIG_DIR`; the last `customTitle` in the last 256 KB, a 【Daily】
+  prefix dropped, cut to 40 characters at a word), newest first, one per
+  name, "Techno" skipped (`chats()` in the player, read again after a
+  minute). Auto and ⏭ play the newest chat not played yet (`nextChat`);
+  `chatsPlayed` in the state keeps the walk, and starts again from the
+  newest when every chat played. Favorites in turn still play favorites.
+  The old pool (repo names, prompt key words) and the starters come only
+  when no chat has a title.
+- **Updates do not reach users by themselves.** A third-party marketplace
+  has background auto-update off, and `marketplace.json` has no field to
+  turn it on (docs: code.claude.com/docs/en/plugins/host-marketplace). Each
+  user turns it on in `/plugin` > Marketplaces > techno-mod > Enable
+  auto-update, or runs `claude plugin marketplace update techno-mod &&
+  claude plugin update techno@techno-mod`. A user gets a new copy only when
+  `version` in plugin.json changes, so bump it on every release. A chat
+  keeps the code it loaded; a new chat starts the new version and replaces
+  the older player.
+
 ### 0.9.3 packaging (Ruslan, 2026-10-05)
 
 - **Public repo, plugin marketplace install, option B** (picked from A as

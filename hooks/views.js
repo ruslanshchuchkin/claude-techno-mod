@@ -30,17 +30,19 @@ const clock = (ms) => { const s = Math.floor(ms / 1000); return Math.floor(s / 6
 // next track, then the track, its heart and share, and the volume (Ruslan,
 // 2026-10-05, option B: "remove dark and 132 bpm ... move it down"; the mood
 // and the tempo sit in the bottom line now).
-function transport(ui, vm, act, prefix) {
+function transport(ui, vm, act, prefix, hide = new Set()) {
   const v = vm.view
+  const name = ui.Text({ bold: true, wrap: 'truncate-end', children: [v.phrase] })
   return [
-    vm.recent.length ? ui.Button({ key: prefix + 'prev', label: '⏮', onPress: () => act.prev() }) : null,
+    vm.recent.length && !hide.has('prev') ? ui.Button({ key: prefix + 'prev', label: '⏮', onPress: () => act.prev() }) : null,
     toggle(ui, prefix + 'play', vm.playing ? '■ stop' : '▶ play', !vm.playing, () => (vm.playing ? act.stop() : act.play()), prefix ? {} : { hotkey: 'p' }),
     ui.Button({ key: prefix + 'skip', label: '⏭', onPress: () => act.skip() }),
-    ui.Text({ bold: true, wrap: 'truncate-end', children: [v.phrase] }),
-    ui.Button({ key: prefix + 'fav', label: vm.fav ? '♥' : '♡', plain: true, onPress: () => act.fav() }),
+    // in the bar the name gives way first: it shrinks and ends in …
+    prefix ? ui.Box({ key: prefix + 'name', flexShrink: 1, minWidth: 0, overflow: 'hidden', children: [name] }) : name,
+    hide.has('fav') ? null : ui.Button({ key: prefix + 'fav', label: vm.fav ? '♥' : '♡', plain: true, onPress: () => act.fav() }),
     // the word, not an arrow (Ruslan, 2026-10-05, option B of arrow / word / under the grid)
-    ui.Button({ key: prefix + 'share', label: 'share', onPress: () => act.copy() }),
-    volume(ui, vm, act, prefix),
+    hide.has('share') ? null : ui.Button({ key: prefix + 'share', label: 'share', onPress: () => act.copy() }),
+    hide.has('volume') ? null : volume(ui, vm, act, prefix),
   ]
 }
 
@@ -345,21 +347,75 @@ export function appView(ui, vm, act) {
   return col(ui, [...body, updateLine(ui, vm, act), vm.status ? dim(ui, vm.status, { key: 'status', wrap: 'truncate-end' }) : null], { borderStyle: 'round', paddingX: 1 })
 }
 
+// The bar always stays one line (Ruslan, 2026-10-22: "on shorter windows
+// it's fucked up", the volume and × wrapped under it). The name shrinks
+// first; when even a short name does not fit, the bar drops these, in turn.
+export const BAR_DROPS = ['volume', 'share', 'context', 'prev', 'fav', 'open']
+const NAME_MIN = 12 // cells the name keeps before the bar drops anything
+
+// About how many cells the bar takes without the name, without `hide`. The
+// desktop draws in its own font with bordered buttons, so a cell of text
+// costs more there than its count (measured on a desktop screenshot, about 88
+// cells for the whole bar but the name; this gives 93).
+function barCells(vm, hide) {
+  const desk = vm.surface !== 'terminal'
+  const chars = (s) => [...String(s)].length * (desk ? 1.1 : 1)
+  const gap = desk ? 2 : 1
+  const btn = (s) => chars(s) + (desk ? 4 : 2) + gap
+  const plain = (s) => chars(s) + (desk ? 1 : 0) + gap
+  const level = vm.volume ?? 4
+  const ctx = contextLabel(vm.context)
+  const parts = {
+    note: plain('♪'),
+    prev: vm.recent.length ? btn('⏮') : 0,
+    play: btn('▶ play'),
+    skip: btn('⏭'),
+    fav: plain('♡'),
+    share: btn('share'),
+    volume: plain('vol') + plain('−') + plain(level ? level * 20 + '%' : 'off') + plain('+'),
+    context: ctx ? plain(ctx.text) : 0,
+    update: vm.update?.state === 'ready' ? btn('↑ update') : vm.update?.state === 'done' ? plain('✓ updated · new chat') : 0,
+    auto: btn('● auto'),
+    open: plain('open'),
+    close: plain('×'),
+  }
+  return Object.entries(parts).reduce((n, [k, w]) => n + (hide.has(k) ? 0 : w), gap)
+}
+
+// What the bar leaves out at this width (`vm.columns`, the band's cells;
+// nothing when the surface has not measured it).
+export function barHides(vm) {
+  const hide = new Set()
+  if (!vm.columns) return hide
+  const room = vm.columns - 4 - NAME_MIN // the band's own border and padding
+  for (const part of BAR_DROPS) {
+    if (barCells(vm, hide) <= room) break
+    hide.add(part)
+  }
+  return hide
+}
+
 // The bar above the chat box while the app is hidden: the same transport as
 // the deck (no section word: "i don't want to see these intro drop 1 at all
 // here"), then auto, open and × on the right. No dancer: hidden is hidden
-// (Paul, 2026-10-22).
+// (Paul, 2026-10-22). Neither side wraps: the left one shrinks (the name),
+// the right one keeps its size.
 export function miniView(ui, vm, act) {
   if (!vm.view) return spread(ui, [ui.Text({ bold: true, children: ['♪'] }), dim(ui, vm.down || 'starting the player…')], [link(ui, 'mini-close', '×', () => act.closeBar())], 'mini')
-  return spread(ui, [
-    ui.Text({ bold: true, children: ['♪'] }),
-    ...transport(ui, vm, act, 'mini-'),
-  ], [
-    vm.update?.state === 'ready' ? ui.Button({ key: 'mini-update', label: '↑ update', variant: 'primary', onPress: () => act.update() }) : null,
-    vm.update?.state === 'done' ? dim(ui, '✓ updated · new chat') : null,
-    contextFill(ui, vm, 'mini-'),
-    toggle(ui, 'mini-auto', vm.auto ? '● auto' : '○ auto', vm.auto, () => act.auto()),
-    link(ui, 'mini-open', 'open', () => act.open()),
-    link(ui, 'mini-close', '×', () => act.closeBar()),
-  ], 'mini')
+  const hide = barHides(vm)
+  const side = (children, extra) => row(ui, children, { flexWrap: 'nowrap', ...extra })
+  return ui.Box({ key: 'mini', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', columnGap: 2, children: [
+    side([
+      ui.Text({ bold: true, children: ['♪'] }),
+      ...transport(ui, vm, act, 'mini-', hide),
+    ], { flexShrink: 1, minWidth: 0, overflow: 'hidden' }),
+    side([
+      vm.update?.state === 'ready' ? ui.Button({ key: 'mini-update', label: '↑ update', variant: 'primary', onPress: () => act.update() }) : null,
+      vm.update?.state === 'done' ? dim(ui, '✓ updated · new chat') : null,
+      hide.has('context') ? null : contextFill(ui, vm, 'mini-'),
+      toggle(ui, 'mini-auto', vm.auto ? '● auto' : '○ auto', vm.auto, () => act.auto()),
+      hide.has('open') ? null : link(ui, 'mini-open', 'open', () => act.open()),
+      link(ui, 'mini-close', '×', () => act.closeBar()),
+    ], { flexShrink: 0 }),
+  ] })
 }

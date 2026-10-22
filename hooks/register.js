@@ -8,7 +8,7 @@
 // /techno              show or hide the app
 // /techno <phrase>     a new track from the phrase (or from a share code)
 // /techno stop | save | code
-// /techno dancer [clawd | spark | cat | robot | off | your own frames]
+// /techno dancer [clawd | nyan | off | your own frames]
 import { parseCode, encodeCode, describe, render, toWav, grid, activeLayers, cleanTrack, soundInfo, planOf, planAdds, LAYERS, GRID_LAYERS, PLAN, BPM_MIN, BPM_MAX, trackFor, styleName } from './engine.js'
 import { appView, miniView } from './views.js'
 import { keyWords } from './words.js'
@@ -18,7 +18,7 @@ import { dancerFor, nextDancer, DANCER_NAMES, DEFAULT_DANCER, MOVES, SAYS } from
 const TOOL = 'mcp__techno__jam'
 // The plugin version: in the jam tool's answer, and the player of an older
 // version is replaced by this one. Keep it equal to plugin.json (a test checks).
-const VERSION = '0.10.6'
+const VERSION = '0.10.7'
 // [accent, normal] fill of a hit in the step grid
 const LAYER_COLORS = {
   kick: ['#e85a5a', '#c94040'],
@@ -424,6 +424,7 @@ export function register(on) {
     const editTab = s.editTab ?? (heard.bass ? 'bass' : ['kick', 'hats', 'acid'].find((n) => heard[n]) ?? 'kick')
     const vm = {
       surface: e.surface,
+      columns: e.viewport?.columns ?? null, // the band's width in cells: the bar drops parts to stay one line
       screen: s.screen,
       down: s.down,
       ps,

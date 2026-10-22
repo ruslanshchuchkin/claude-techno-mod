@@ -50,6 +50,22 @@ deploy a verified change without asking, then say what is live.
 
 ## Decisions
 
+### 0.10.7 the bar stays one line (Ruslan, 2026-10-22)
+
+- "on shorter windows it's fucked up": in a narrow desktop window the bar
+  wrapped (the volume under the transport, × under auto). Now neither side
+  wraps (`flexWrap: 'nowrap'`). The left side shrinks; the name gives way
+  first and ends in … (`mini-name`, a Box with `minWidth: 0`).
+- When the name would get under 12 cells, the bar drops parts in turn:
+  volume, share, the context %, ⏮, ♡, open (`BAR_DROPS`, `barHides` in
+  views.js). Play, ⏭, the name, auto and × always stay.
+- The width is `e.viewport.columns` (`vm.columns`): cells of the code font.
+  The desktop draws buttons in its own font with borders, so `barCells`
+  counts a desktop item as about 1.1 cells a character plus its border and
+  gap, measured on Ruslan's screenshot (the bar without the name was about
+  88 cells). Unknown width: nothing drops.
+- The deck's top line still wraps in a narrow window (not asked).
+
 ### 0.10.4 the dancer (Paul, 2026-10-22)
 
 - "a funny animation that is running through the claude terminal while the

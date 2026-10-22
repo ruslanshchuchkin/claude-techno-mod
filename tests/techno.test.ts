@@ -266,6 +266,31 @@ test('hidden, the app is a one-line bar with previous, play, next track, favorit
   await ui.unmount()
 })
 
+test('a narrow window: the bar stays one line, the name shrinks, then volume, share and the rest give way in turn', async ($, on) => {
+  stubs(on)
+  await start($)
+  await $.command.run({ command: 'techno', args: 'ruslan' })
+  await $.command.run({ command: 'techno', args: 'landing page v3 design mobile first' })
+  await $.command.run({ command: 'techno', args: '' })
+  const keys = ['mini-prev', 'mini-play', 'mini-skip', 'mini-name', 'mini-fav', 'mini-share', 'mini-volume', 'mini-auto', 'mini-open', 'mini-close']
+  const shown = async (surface: 'desktop' | 'terminal', columns: number) => {
+    const ui = await $.ui.mount({ ...PANE, surface, viewport: { columns, rows: 40 } })
+    const out: string[] = []
+    for (const key of keys) if (await ui.find({ key })) out.push(key)
+    await ui.unmount()
+    return out
+  }
+  // wide: everything, as before
+  expect(await shown('desktop', 200)).toEqual(keys)
+  // a bit narrow: the volume goes first
+  expect(await shown('desktop', 100)).toEqual(keys.filter((k) => k !== 'mini-volume'))
+  // narrow: only what plays the music, the name, auto and ×
+  expect(await shown('desktop', 60)).toEqual(['mini-play', 'mini-skip', 'mini-name', 'mini-auto', 'mini-close'])
+  // the terminal counts its own cells
+  expect(await shown('terminal', 80)).toEqual(keys)
+  expect(await shown('terminal', 50)).toEqual(['mini-play', 'mini-skip', 'mini-name', 'mini-fav', 'mini-auto', 'mini-open', 'mini-close'])
+})
+
 test('the bar follows you into a new chat once you used techno', async ($, on) => {
   stubs(on, { bar: true })
   await start($)

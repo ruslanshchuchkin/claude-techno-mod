@@ -3,6 +3,7 @@ import { atPart, encodeCode, parseCode, toggleStep, trackFor, styleName, withSty
 import { newSet, loopSpec, afterLoop, stepOn, posOf, sectionLabel, homeOf, GLIDE, freshKey } from '../hooks/conductor.js'
 import { partBar, contextLabel } from '../hooks/views.js'
 import { keyWords } from '../hooks/words.js'
+import { dancerFor, nextDancer, px, DANCERS, DANCER_NAMES } from '../hooks/dancers.js'
 
 const NOTES = ['c', 'c#', 'd', 'd#', 'e', 'f', 'f#', 'g', 'g#', 'a', 'a#', 'b']
 
@@ -25,7 +26,7 @@ function fakePlayer() {
     const nx = PLAN[t.part + 1]
     return { code: encodeCode(t), id: id(t), phrase: t.phrase, mood: styleName(t), style: t.style == null ? null : styleName(t), bpm: t.bpm, part: t.part, section: PLAN[t.part].section, name: PLAN[t.part].name, from: null, next: nx ? { name: nx.name, adds: nx.adds, layer: nx.layer } : { name: 'the next track' }, bar: 0, loopsLeft: 1, at: posOf(p.set), plan: planOf(t) }
   }
-  const state = () => ({ version: '9.9.9', rev: p.rev, now: 0, playing: p.playing, auto: p.auto, playlist: null, view: view(), barStartedAt: 0, barMs: 1800, stepMs: 112, nextInMs: p.playing && p.auto ? 23000 : null, fav: p.favorites.some((f: any) => f.code === id(p.set.track)), favorites: p.favorites, recent: p.history.map((c: string) => ({ code: c, label: parseCode(c)!.phrase, mood: 'dark', bpm: 128 })), said: p.said, canUndo: false, volume: p.volume, chats: p.chats })
+  const state = () => ({ version: '9.9.9', rev: p.rev, now: 0, playing: p.playing, auto: p.auto, playlist: null, view: view(), barStartedAt: p.playing ? 1 : 0, barMs: 1800, stepMs: 112, nextInMs: p.playing && p.auto ? 23000 : null, fav: p.favorites.some((f: any) => f.code === id(p.set.track)), favorites: p.favorites, recent: p.history.map((c: string) => ({ code: c, label: parseCode(c)!.phrase, mood: 'dark', bpm: 128 })), said: p.said, canUndo: false, volume: p.volume, chats: p.chats })
   p.command = (c: any) => {
     p.cmds.push(c)
     p.rev++
@@ -688,5 +689,134 @@ test('the deck and the bar show how full the context window is, and follow it', 
   await clock.advance(1100)
   expect(await ui.find({ key: 'mini-play' })).toBeDefined()
   expect(await ui.find({ text: /^[○◔◑◕●] \d+%$/ })).toBeUndefined()
+  await ui.unmount()
+})
+
+// The dancer's rows as plain text, from the tree its module drew
+function dancerRows(tree: any): string[] {
+  const text = (el: any): string => (typeof el === 'string' ? el : (el?.children ?? el?.props?.children ?? []).map(text).join(''))
+  const rows = tree.children ?? tree.props?.children ?? []
+  return rows.map(text)
+}
+
+test('dancers: every dancer has frames of one height; your own frames split on ";"; off is none; a click walks the names', () => {
+  for (const name of DANCER_NAMES) {
+    const d = dancerFor(name)!
+    expect(d.frames.length).toBeGreaterThan(1)
+    for (const f of d.frames) expect(f.length).toBe(3)
+  }
+  expect(dancerFor(undefined)!.name).toBe('clawd')
+  expect(dancerFor('NYAN')!.name).toBe('nyan')
+  expect(dancerFor('off')).toBe(null)
+  expect(dancerFor('(•_•);(⌐■_■)')).toMatchObject({ name: 'own', frames: [['(•_•)'], ['(⌐■_■)']] })
+  expect(nextDancer('clawd')).toBe(DANCER_NAMES[1])
+  expect(nextDancer(DANCER_NAMES.at(-1))).toBe(DANCER_NAMES[0])
+  expect(nextDancer('(•_•)')).toBe(DANCER_NAMES[0])
+  expect(Object.keys(DANCERS)).toContain('clawd')
+  // clawd is pixel art: three lines of nine cells, as the welcome screen draws it
+  for (const f of dancerFor('clawd')!.frames) for (const l of f) expect([...l]).toHaveLength(9)
+  expect(DANCER_NAMES).toEqual(['clawd', 'nyan'])
+  expect(dancerFor('nyan')).toMatchObject({ rows: 5, wrap: true, trail: { chars: "`*.,*'^" } })
+  expect(dancerFor('clawd')!.frames[0]).toEqual([' ▐▛███▜▌ ', '▝▜█████▛▘', '  ▘▘ ▝▝  '])
+  expect(px('#.\n.#')).toEqual(['▚'])
+})
+
+test('the dancer: over the grid, asleep while stopped, walks and dances to the beat, a click picks the next one', async ($, on) => {
+  const { player } = stubs(on)
+  await start($)
+  await $.command.run({ command: 'techno', args: '' })
+  for (const surface of ['terminal', 'desktop'] as const) {
+    const ui = await $.ui.mount({ ...PANE, surface })
+    if (player.playing) await ui.press({ key: 'play' })
+    expect(await ui.find({ key: 'dancer' })).toBeDefined()
+    await ui.resize({ columns: 60, rows: 4, in: 'dancer' })
+    // stopped: it sleeps
+    const asleep = dancerRows(await ui.drawn({ in: 'dancer' }))
+    expect(asleep).toHaveLength(4)
+    expect(asleep[0]).toContain('z Z z')
+    expect(asleep.join('\n')).toContain('▐▛███▜▌')
+    await ui.press({ key: 'play' })
+    // playing: it moves on its own clock
+    const first = dancerRows(await ui.drawn({ in: 'dancer' })).join('\n')
+    await ui.advance(112 * 16)
+    const later = dancerRows(await ui.drawn({ in: 'dancer' })).join('\n')
+    expect(later).not.toBe(first)
+    expect(later).not.toContain('z Z z')
+    await ui.unmount()
+  }
+  // a click on it: the next dancer
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await ui.resize({ columns: 60, rows: 4, in: 'dancer' })
+  await ui.pointer({ type: 'down', x: 2, y: 2, button: 'left', in: 'dancer' })
+  expect(dancerRows(await ui.drawn({ in: 'dancer' })).join('\n')).toContain('~|__(o.o)')
+  expect((await ui.find({ text: /dancer: nyan/ }))?.text).toContain('/techno dancer off')
+  await ui.unmount()
+})
+
+test('/techno dancer picks the dancer, off hides it, your own frames dance; Claude picks one with the jam tool', async ($, on) => {
+  stubs(on, { dancer: 'nyan' })
+  await start($)
+  await $.command.run({ command: 'techno', args: '' })
+  // the dancer kept from another chat
+  expect((await $.command.run({ command: 'techno', args: 'dancer' })).text).toContain('The dancer is nyan. Pick one: clawd, nyan, off')
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await ui.resize({ columns: 60, rows: 4, in: 'dancer' })
+  expect(dancerRows(await ui.drawn({ in: 'dancer' })).join('\n')).toContain('~|__(o.o)')
+  await $.command.run({ command: 'techno', args: 'dancer off' })
+  expect(await ui.find({ key: 'dancer' })).toBeUndefined()
+  expect(await ui.find({ key: 'grid' })).toBeDefined()
+  await $.command.run({ command: 'techno', args: 'dancer (•_•);(⌐■_■)' })
+  expect(dancerRows(await ui.drawn({ in: 'dancer' })).join('\n')).toContain('(•_•)')
+  const r = await $.tool.call({ tool: 'mcp__techno__jam', dancer: 'clawd' })
+  expect(String(r.result)).toContain('dancer: clawd')
+  expect(dancerRows(await ui.drawn({ in: 'dancer' })).join('\n')).toContain('▐▛███▜▌')
+  await ui.unmount()
+})
+
+test('the dancer in a drop: it jumps on the offbeat, notes trail it, and it says the drop; over the bar only while music plays', async ($, on) => {
+  const { player, clock } = stubs(on)
+  await start($)
+  await $.command.run({ command: 'techno', args: 'ruslan' })
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await ui.resize({ columns: 60, rows: 4, in: 'dancer' })
+  player.set = newSet(atPart(trackFor('ruslan'), 5))
+  player.rev++
+  await clock.advance(1100)
+  const seen: string[][] = []
+  for (let i = 0; i < 16; i++) { await ui.advance(112); seen.push(dancerRows(await ui.drawn({ in: 'dancer' }))) }
+  // up in the top row on some steps (a jump), never asleep
+  expect(seen.some((r) => r[0].includes('▐▛███▜▌'))).toBe(true)
+  expect(seen.some((r) => r[1].includes('▐▛███▜▌'))).toBe(true)
+  expect(seen.some((r) => /[♪♫]/.test(r.join('')))).toBe(true)
+  expect(seen.some((r) => /DROP|oonts oonts|ship it|lets gooo/.test(r[0]))).toBe(true)
+  // hidden: the bar has no dancer, even while it plays
+  await $.command.run({ command: 'techno', args: '' })
+  expect(player.playing).toBe(true)
+  expect(await ui.find({ key: 'mini-play' })).toBeDefined()
+  expect(await ui.find({ key: 'dancer' })).toBeUndefined()
+  await ui.unmount()
+})
+
+test('nyan: five rows, flies on to the right with a rainbow behind it, out on the right and back in on the left', async ($, on) => {
+  stubs(on, { dancer: 'nyan' })
+  await start($)
+  await $.command.run({ command: 'techno', args: 'ruslan' })
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  await ui.resize({ columns: 40, rows: 5, in: 'dancer' })
+  await ui.advance(112)
+  const rows = dancerRows(await ui.drawn({ in: 'dancer' }))
+  expect(rows).toHaveLength(5)
+  const cat = rows[3].indexOf('~|__(o.o)')
+  expect(cat).toBeGreaterThan(0)
+  // the rainbow fills the row up to the cat, each row above shorter
+  expect(rows[3].slice(0, cat - 4)).toMatch(/^[`*.,'^]+$/)
+  expect(rows[0].trim().length).toBeLessThan(rows[2].trim().length)
+  // it only flies right, and comes back in on the left
+  const xs: number[] = []
+  for (let i = 0; i < 200; i++) { await ui.advance(112 * 4); xs.push(dancerRows(await ui.drawn({ in: 'dancer' }))[3].indexOf('~|__')) }
+  const moves = xs.slice(1).map((x, i) => x - xs[i]).filter((d) => d !== 0)
+  expect(moves.some((d) => d > 0)).toBe(true)
+  expect(moves.some((d) => d < -20)).toBe(true)
+  expect(moves.every((d) => d > 0 || d < -20)).toBe(true)
   await ui.unmount()
 })

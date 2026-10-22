@@ -8,15 +8,17 @@
 // /techno              show or hide the app
 // /techno <phrase>     a new track from the phrase (or from a share code)
 // /techno stop | save | code
+// /techno dancer [clawd | spark | cat | robot | off | your own frames]
 import { parseCode, encodeCode, describe, render, toWav, grid, activeLayers, cleanTrack, soundInfo, planOf, planAdds, LAYERS, GRID_LAYERS, PLAN, BPM_MIN, BPM_MAX, trackFor, styleName } from './engine.js'
 import { appView, miniView } from './views.js'
 import { keyWords } from './words.js'
 import { CLASSICS } from './classics.js'
+import { dancerFor, nextDancer, DANCER_NAMES, DEFAULT_DANCER, MOVES, SAYS } from './dancers.js'
 
 const TOOL = 'mcp__techno__jam'
 // The plugin version: in the jam tool's answer, and the player of an older
 // version is replaced by this one. Keep it equal to plugin.json (a test checks).
-const VERSION = '0.10.3'
+const VERSION = '0.10.6'
 // [accent, normal] fill of a hit in the step grid
 const LAYER_COLORS = {
   kick: ['#e85a5a', '#c94040'],
@@ -60,6 +62,7 @@ const s = {
   grids: new Map(),
   classicTurn: Math.floor(Math.random() * 9), // which four classics the new song screen shows
   update: null, // { latest, state: 'ready' | 'working' | 'done' | 'failed', why }
+  dancer: DEFAULT_DANCER, // who dances over the grid (dancers.js), kept in $.store for every chat
   debug: [], // dev only: TECHNO_DEBUG=crate,update with the mod loaded from a folder (--plugin-dir)
 }
 
@@ -254,6 +257,17 @@ async function loadRepo($) {
   }
 }
 
+// The dancer: a name of dancers.js, off, or your own frames. Every chat
+// keeps it ($.store); a chat open now picks it up at its next start.
+function setDancer($, word) {
+  s.dancer = String(word ?? '').trim().slice(0, 200) || DEFAULT_DANCER
+  $.store.set('dancer', s.dancer)
+  $.ui.invalidate('ui.render')
+  const d = dancerFor(s.dancer)
+  return d ? 'dancer: ' + (d.name === 'own' ? s.dancer : d.name) : 'dancer: off'
+}
+const DANCER_HELP = 'Pick one: ' + DANCER_NAMES.join(', ') + ', off, or your own frames split by ";", like /techno dancer (•_•);( •_•)>⌐■-■;(⌐■_■)'
+
 function describeNow() {
   const v = s.ps?.view
   if (!v) return 'nothing'
@@ -268,6 +282,8 @@ export function register(on) {
     s.home = (await $.env.get('HOME')) ?? ''
     s.sock = s.home + '/Library/Caches/techno/techno.sock'
     if ((await $.store.get('bar')) === true) s.used = true
+    const dancer = await $.store.get('dancer')
+    if (typeof dancer === 'string') s.dancer = dancer
     // never from an installed copy: those live in the plugin cache
     if (!$.plugin.root.includes('/.claude/plugins/')) s.debug = String((await $.env.get('TECHNO_DEBUG')) ?? '').split(',').filter(Boolean)
     if (s.debug.includes('crate')) s.screen = 'crate'
@@ -278,6 +294,7 @@ export function register(on) {
         'Every song is dark techno, 128-136 bpm. The song name picks its bass lines and sounds, and some songs bring congas, a shaker, a drone or a soft looping melody (the acid layer, shown as melody). There is no 303. dice: true gives new bass lines and patterns. energy: 0 minimal, 1 rolling, 2 driving, 3 peak, 4 rave. ' +
         'A track is a long set: intro, groove, build, three drops with breakdowns between them, an outro that mixes into the next track. next: true moves to the next part. track: "next" mixes into the next track now, "previous" goes back to the one before. ' +
         'layers (kick, bass, hats, clap, perc, ride, pad, rumble, acid, voice, stab, conga, shaker, drone): true forces a layer on, false off, "auto" gives it back to the arrangement. dice: true rolls new patterns. phrase: a new phrase starts a new track. favorite: true adds the track to the favorites. volume: 0 mute .. 5 loudest, 4 is the default (each step about 6 dB); for "quieter" or "louder" move it one step. ' +
+        'dancer: who dances over the grid: ' + DANCER_NAMES.join(', ') + ', off, or custom frames split by ";" (one line each, like "(•_•);(⌐■_■)"). ' +
         'note: a few words for the pane that say what you changed. Reply to the user in one short line.',
       inputSchema: {
         type: 'object',
@@ -295,6 +312,7 @@ export function register(on) {
           play: { type: 'boolean', description: 'true starts the music, false stops it' },
           volume: { type: 'integer', minimum: 0, maximum: 5, description: '0 mute, 4 the default, 5 loudest' },
           auto: { type: 'boolean', description: 'true lets the set play by itself (parts, drops, then the next track); false stays on a part until next' },
+          dancer: { type: 'string', description: 'Who dances over the grid: ' + DANCER_NAMES.join(', ') + ', off, or your own frames split by ";"' },
           note: { type: 'string', description: 'A few words for the pane, like "more energy, congas on"' },
         },
       },
@@ -321,6 +339,11 @@ export function register(on) {
     if (word === 'stop') { await cmd($, { op: 'pause' }); return { text: 'Stopped.' } }
     if (word === 'save') return { text: s.ps ? await save($, s.ps.view.code) : 'Nothing plays yet.' }
     if (word === 'code') return { text: s.ps ? shareLine(s.ps.view.code) : 'No track yet. Start with /techno <phrase>.' }
+    if (word === 'dancer' || word.startsWith('dancer ')) {
+      const pick = arg.slice(6).trim()
+      if (!pick) return { text: 'The dancer is ' + s.dancer + '. ' + DANCER_HELP }
+      return { text: setDancer($, pick) + '. A click on the dancer picks the next one.' }
+    }
     if (word === 'play') await cmd($, { op: 'play' })
     else if (arg) { await cmd($, { op: 'pick', code: arg }); s.screen = 'deck' }
     else if (s.isOpen) { s.isOpen = false; $.ui.invalidate('ui.render'); return {} }
@@ -342,6 +365,7 @@ export function register(on) {
     if (typeof e.auto === 'boolean') { await cmd($, { op: 'auto', on: e.auto }); done.push('auto ' + (e.auto ? 'on' : 'off')) }
     if (typeof e.favorite === 'boolean' && s.ps && s.ps.fav !== e.favorite) { await cmd($, { op: 'fav' }); done.push(e.favorite ? 'added to favorites' : 'removed from favorites') }
     if (Number.isInteger(e.volume)) { await cmd($, { op: 'volume', level: e.volume }); done.push('volume ' + e.volume) }
+    if (typeof e.dancer === 'string') done.push(setDancer($, e.dancer))
     if (e.play === true) await cmd($, { op: 'play' })
     if (e.play === false) await cmd($, { op: 'pause' })
     else if (!s.ps?.playing && (e.phrase || e.track)) await cmd($, { op: 'play' })
@@ -432,6 +456,12 @@ export function register(on) {
         return { chats: ps?.chats ?? [], classics, example: { phrase: ex.phrase, mood: styleName(ex), bpm: ex.bpm }, now }
       })(),
       update: s.update,
+      dancerEl: (() => {
+        const d = v && ui.Client ? dancerFor(s.dancer) : null
+        if (!d) return null
+        const section = v.section ?? 'groove'
+        return ui.Client({ key: 'dancer', module: './dancer.client.js', width: '100%', props: { frames: d.frames, color: d.color, bold: !!d.bold, rows: d.rows ?? 4, wrap: !!d.wrap, trail: d.trail ?? null, move: MOVES[section] ?? MOVES.groove, says: SAYS[section] ?? [], section, playing: looping, step, stepMs: ps?.stepMs || 115, stamp: ps?.barStartedAt ?? 0 } })
+      })(),
       gridEl: rows.length ? ui.Client({ key: 'grid', module: './grid.client.js', props: { rows, step, stepMs: ps?.stepMs || 115, playing: looping, stamp: ps?.barStartedAt ?? 0 } }) : null,
     }
     const go = (body) => () => cmd($, body)
@@ -471,8 +501,13 @@ export function register(on) {
   })
 
   // The grid posts { toggle: layer } for a click on a row name, and
-  // { step, layer } for a click on a cell.
+  // { step, layer } for a click on a cell. The dancer posts { dancer: 'next' }.
   on('ui.message', async ($, e, next) => {
+    if (e.element === 'dancer' && e.data?.dancer === 'next') {
+      s.status = setDancer($, nextDancer(s.dancer)) + ' · /techno dancer off hides it'
+      if (!s.isOpen) $.ui.toast(s.status)
+      return {}
+    }
     const d = e.element === 'grid' ? e.data : null
     if (d && typeof d.toggle === 'string' && LAYERS.includes(d.toggle)) { await cmd($, { op: 'layer', name: d.toggle }); return {} }
     if (d && typeof d.layer === 'string' && GRID_LAYERS.includes(d.layer) && Number.isInteger(d.step)) { await cmd($, { op: 'step', layer: d.layer, i: d.step }); return {} }

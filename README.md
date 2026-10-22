@@ -59,6 +59,7 @@ The band in the video above, part by part:
 | **♡ / share** | Keep the track in favorites / copy its share line |
 | **vol − 80% +** | The volume, in steps of 20%. `vol` mutes. Or ask Claude: *"quieter"* |
 | **▰▰▱▱ drop 1** | The whole song, one block per 15 seconds, and where you are: intro, groove, build, drop, break, outro |
+| **the dancer** | A little Claude dances over the grid: it walks to the beat, hops in the drops and says *"wait for it"* before one. Click it for Nyan Cat, flying across on its rainbow (after [djui/nyancat](https://github.com/djui/nyancat)). Your own: `/techno dancer (•_•);( •_•)>⌐■-■;(⌐■_■)` (frames split by `;`). `/techno dancer off` hides it. Or ask Claude: *"bring in nyan cat"* |
 | **the grid** | The loop that plays now. Click a cell to add a hit, click a name to mute it |
 | **auto** | On: it plays the whole set and moves on by itself. Off: it stays on one part |
 | **dark · 133 bpm** | Always dark, never the same: every song picks its own bass lines, kick, room and tempo, and some bring congas, a shaker, a drone or a soft hypnotic melody. Each song has its own key, and the next song always moves to another |
@@ -193,6 +194,7 @@ node scripts/set.mjs "ship it" "warehouse 4am" set.wav && afplay set.wav
 | `hooks/register.js` | The chat side: `/techno`, the `jam` tool, the remote control |
 | `hooks/views.js` | The deck, the edit card, favorites |
 | `hooks/words.js` | Which words of a prompt become a track |
+| `hooks/dancers.js`, `hooks/dancer.client.js` | The dancers, and how they move to the beat |
 | `player/techno.mjs` | The background player |
 | `player/TechnoPlayer.swift` | The helper app. After a change, run `node scripts/build-helper.mjs` |
 

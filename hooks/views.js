@@ -348,22 +348,23 @@ export function appView(ui, vm, act) {
 }
 
 // The bar always stays one line (Ruslan, 2026-10-22: "on shorter windows
-// it's fucked up", the volume and × wrapped under it). The name shrinks
-// first; when even a short name does not fit, the bar drops these, in turn.
-export const BAR_DROPS = ['volume', 'share', 'context', 'prev', 'fav', 'open']
+// it's fucked up", the volume and × wrapped under it). It has no volume
+// ("VOL takes too much space, let's add it only when you click open"). The
+// name shrinks first; when even a short name does not fit, the bar drops
+// these, in turn.
+export const BAR_DROPS = ['share', 'context', 'prev', 'fav', 'open']
 const NAME_MIN = 12 // cells the name keeps before the bar drops anything
 
 // About how many cells the bar takes without the name, without `hide`. The
 // desktop draws in its own font with bordered buttons, so a cell of text
 // costs more there than its count (measured on a desktop screenshot, about 88
-// cells for the whole bar but the name; this gives 93).
+// cells for the whole bar but the name, volume included; this gave 93).
 function barCells(vm, hide) {
   const desk = vm.surface !== 'terminal'
   const chars = (s) => [...String(s)].length * (desk ? 1.1 : 1)
   const gap = desk ? 2 : 1
   const btn = (s) => chars(s) + (desk ? 4 : 2) + gap
   const plain = (s) => chars(s) + (desk ? 1 : 0) + gap
-  const level = vm.volume ?? 4
   const ctx = contextLabel(vm.context)
   const parts = {
     note: plain('♪'),
@@ -372,7 +373,6 @@ function barCells(vm, hide) {
     skip: btn('⏭'),
     fav: plain('♡'),
     share: btn('share'),
-    volume: plain('vol') + plain('−') + plain(level ? level * 20 + '%' : 'off') + plain('+'),
     context: ctx ? plain(ctx.text) : 0,
     update: vm.update?.state === 'ready' ? btn('↑ update') : vm.update?.state === 'done' ? plain('✓ updated · new chat') : 0,
     auto: btn('● auto'),
@@ -382,10 +382,11 @@ function barCells(vm, hide) {
   return Object.entries(parts).reduce((n, [k, w]) => n + (hide.has(k) ? 0 : w), gap)
 }
 
-// What the bar leaves out at this width (`vm.columns`, the band's cells;
-// nothing when the surface has not measured it).
+// What the bar leaves out: always the volume (the open app has it), and
+// more at this width (`vm.columns`, the band's cells; nothing more when the
+// surface has not measured it).
 export function barHides(vm) {
-  const hide = new Set()
+  const hide = new Set(['volume'])
   if (!vm.columns) return hide
   const room = vm.columns - 4 - NAME_MIN // the band's own border and padding
   for (const part of BAR_DROPS) {

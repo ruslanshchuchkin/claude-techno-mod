@@ -50,6 +50,12 @@ deploy a verified change without asking, then say what is live.
 
 ## Decisions
 
+### 0.10.8 no volume in the bar (Ruslan, 2026-10-22)
+
+- "i feel like VOL takes too much space, let's add it only when you click
+  open": the bar never shows `vol − 80% +`; the open app (the deck) keeps
+  it. `barHides` always hides `volume`; `BAR_DROPS` starts at share.
+
 ### 0.10.7 the bar stays one line (Ruslan, 2026-10-22)
 
 - "on shorter windows it's fucked up": in a narrow desktop window the bar
@@ -57,7 +63,7 @@ deploy a verified change without asking, then say what is live.
   wraps (`flexWrap: 'nowrap'`). The left side shrinks; the name gives way
   first and ends in … (`mini-name`, a Box with `minWidth: 0`).
 - When the name would get under 12 cells, the bar drops parts in turn:
-  volume, share, the context %, ⏮, ♡, open (`BAR_DROPS`, `barHides` in
+  (0.10.8: no volume any more) share, the context %, ⏮, ♡, open (`BAR_DROPS`, `barHides` in
   views.js). Play, ⏭, the name, auto and × always stay.
 - The width is `e.viewport.columns` (`vm.columns`): cells of the code font.
   The desktop draws buttons in its own font with borders, so `barCells`

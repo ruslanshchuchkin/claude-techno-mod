@@ -256,7 +256,9 @@ test('hidden, the app is a one-line bar with previous, play, next track, favorit
   await $.command.run({ command: 'techno', args: 'ship it' })
   await $.command.run({ command: 'techno', args: '' })
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  for (const key of ['mini-play', 'mini-prev', 'mini-skip', 'mini-fav', 'mini-share', 'mini-vol-up', 'mini-auto', 'mini-open']) expect(await ui.find({ key })).toBeDefined()
+  for (const key of ['mini-play', 'mini-prev', 'mini-skip', 'mini-fav', 'mini-share', 'mini-auto', 'mini-open']) expect(await ui.find({ key })).toBeDefined()
+  // no volume in the bar: the open app has it
+  expect(await ui.find({ key: 'mini-volume' })).toBeUndefined()
   // no section word in the bar
   expect(await ui.find({ text: /^(intro|groove|build|drop \d|break|outro)$/ })).toBeUndefined()
   await ui.press({ key: 'mini-prev' })
@@ -266,13 +268,13 @@ test('hidden, the app is a one-line bar with previous, play, next track, favorit
   await ui.unmount()
 })
 
-test('a narrow window: the bar stays one line, the name shrinks, then volume, share and the rest give way in turn', async ($, on) => {
+test('a narrow window: the bar stays one line, the name shrinks, then share and the rest give way in turn', async ($, on) => {
   stubs(on)
   await start($)
   await $.command.run({ command: 'techno', args: 'ruslan' })
   await $.command.run({ command: 'techno', args: 'landing page v3 design mobile first' })
   await $.command.run({ command: 'techno', args: '' })
-  const keys = ['mini-prev', 'mini-play', 'mini-skip', 'mini-name', 'mini-fav', 'mini-share', 'mini-volume', 'mini-auto', 'mini-open', 'mini-close']
+  const keys = ['mini-prev', 'mini-play', 'mini-skip', 'mini-name', 'mini-fav', 'mini-share', 'mini-auto', 'mini-open', 'mini-close']
   const shown = async (surface: 'desktop' | 'terminal', columns: number) => {
     const ui = await $.ui.mount({ ...PANE, surface, viewport: { columns, rows: 40 } })
     const out: string[] = []
@@ -282,8 +284,8 @@ test('a narrow window: the bar stays one line, the name shrinks, then volume, sh
   }
   // wide: everything, as before
   expect(await shown('desktop', 200)).toEqual(keys)
-  // a bit narrow: the volume goes first
-  expect(await shown('desktop', 100)).toEqual(keys.filter((k) => k !== 'mini-volume'))
+  // a bit narrow: share goes first
+  expect(await shown('desktop', 80)).toEqual(keys.filter((k) => k !== 'mini-share'))
   // narrow: only what plays the music, the name, auto and ×
   expect(await shown('desktop', 60)).toEqual(['mini-play', 'mini-skip', 'mini-name', 'mini-auto', 'mini-close'])
   // the terminal counts its own cells
